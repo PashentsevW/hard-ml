@@ -12,7 +12,8 @@ RUN curl -L -o ~/miniconda.sh -O https://repo.anaconda.com/miniconda/Miniconda3-
     && ~/miniconda.sh -b -p /opt/conda \
     && rm -f ~/miniconda.sh 
 
-RUN opt/conda/bin/conda create -n hard-ml-3 python=3.8.5
+ENV PATH /opt/conda/bin:$PATH
+RUN conda create -n hard-ml-3 python=3.8.5
 
 RUN git clone https://github.com/uber/causalml.git ~/causalml \
     && cd ~/causalml \
