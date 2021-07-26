@@ -21,3 +21,7 @@ RUN git clone https://github.com/uber/causalml.git ~/causalml \
     && /opt/conda/envs/hard-ml-3/bin/python setup.py build_ext --inplace \
     && /opt/conda/envs/hard-ml-3/bin/python setup.py install \
     && rm -fR ~/causalml
+
+RUN /opt/conda/envs/hard-ml-3/bin/pip install --user \
+    dask \
+    pyarrow
