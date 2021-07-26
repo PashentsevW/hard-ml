@@ -1,2 +1,6 @@
+# data files
 *.csv
 *.parquet
+
+# python
+__pycache__
