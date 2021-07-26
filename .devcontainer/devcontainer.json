@@ -1,5 +1,5 @@
 {
-	"name": "Hard ML Uplift",
+	"name": "hard-mL-uplift",
 	"context": "..",
 	"dockerFile": "../Dockerfile",
 	"extensions": [
