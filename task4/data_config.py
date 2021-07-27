@@ -11,14 +11,14 @@ data_config = {
             'name': 'favourite_store',
             'args': {'delta': 30, 'date_to': datetime.date(2019, 3, 19)}
         },
-        # {
-        #     'name': 'age_gender',
-        #     'args': {}
-        # },
-        # {
-        #     'name': 'target_from_campaigns',
-        #     'args': {'date_to': datetime.date(2019, 3, 21)}
-        # }
+        {
+            'name': 'age_gender',
+            'args': {}
+        },
+        {
+            'name': 'target_from_campaigns',
+            'args': {'date_to': datetime.date(2019, 3, 21)}
+        }
     ],
     'transforms': [
         {
