@@ -24,4 +24,5 @@ RUN git clone https://github.com/uber/causalml.git ~/causalml \
 
 RUN /opt/conda/envs/hard-ml-3/bin/pip install --user \
     dask \
-    pyarrow
+    pyarrow \
+    category_encoders
