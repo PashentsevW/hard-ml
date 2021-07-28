@@ -6,7 +6,7 @@ from campaign.source import Engine
 from campaign.calcer import compute_features
 
 
-def test_features():
+def test_features_calcers():
     engine = Engine()
     engine.registerTable('campaigns', dd.read_csv('final/data/campaigns.csv'))
     engine.registerTable('customers', dd.read_csv('final/data/customers.csv'))
