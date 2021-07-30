@@ -3,6 +3,9 @@ from dask import dataframe as dd
 from ..source import Engine
 
 
+_seed = 110894
+
+
 class FeatureCalcer(ABC):
     name = None
     keys = None
@@ -31,4 +34,22 @@ class DateFeatureCalcer(FeatureCalcer):
         date_from = self.date_to - self.delta
         return data[((data[self.col_date] >= date_from)
                      & (data[self.col_date] < date_to))]
+
+
+class TargetCalcer(FeatureCalcer):
+    def __init__(self,
+                 engine: Engine, 
+                 sample_frac: float = None):
+        super().__init__(engine)
+        self.sample_frac = sample_frac
+
+    def collect(self) -> dd.DataFrame:
+        raise NotImplementedError
+    
+    def compute(self) -> dd.DataFrame:
+        if self.sample_frac is None:
+            return self.collect()
+        return (self.collect()
+                .sample(frac=self.sample_frac,
+                        random_state=_seed))
 
