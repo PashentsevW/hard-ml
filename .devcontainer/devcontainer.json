@@ -1,7 +1,6 @@
 {
+	"image": "antiguru11/hard-ml:uplift",
 	"name": "hard-ml-uplift",
-	"context": "..",
-	"dockerFile": "../Dockerfile",
 	"extensions": [
 		"ms-azuretools.vscode-docker",
 		"grapecity.gc-excelviewer",
