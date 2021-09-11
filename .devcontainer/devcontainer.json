@@ -1,5 +1,9 @@
 {
-	"image": "antiguru11/hard-ml:uplift",
+	"build": 
+	{
+		"context": "..",
+		"dockerfile": "../Dockerfile"
+	},
 	"name": "hard-ml-uplift",
 	"extensions": [
 		"ms-azuretools.vscode-docker",
@@ -19,5 +23,5 @@
 		"ms-vscode-remote.remote-ssh-edit",
 		"mtxr.sqltools",
 		"formulahendry.terminal"
-	],
+	]
 }
