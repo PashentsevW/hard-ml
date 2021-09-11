@@ -1,6 +1,6 @@
 FROM --platform=amd64 ubuntu:18.04
 
-LABEL maintainer="antiguru110894@gmail.com" version="0.0.0"
+LABEL maintainer="antiguru110894@gmail.com" version="0.1.0"
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -24,5 +24,6 @@ RUN activate base && pip install --user causalml
 
 RUN pip install --user \        
     dask \
+    pandas \
     pyarrow \
     category_encoders
