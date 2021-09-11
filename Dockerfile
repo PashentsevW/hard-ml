@@ -7,8 +7,6 @@ RUN apt-get update \
        build-essential \
        git \
        curl \
-       wget \
-       unzip \
        ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
@@ -17,14 +15,14 @@ RUN curl -L -o ~/miniconda.sh -O https://repo.anaconda.com/miniconda/Miniconda3-
     && ~/miniconda.sh -b -p /opt/conda \
     && rm -f ~/miniconda.sh 
 
-RUN mkdir -p ~/hard-ml/uplift \
-    && git clone https://github.com/Antiguru11/hard-ml.git ~/hard-ml/uplift
-
 ENV PATH /opt/conda/bin:$PATH
+
 RUN activate base \
-    && conda install python=3.8.5 -y \
-    && pip install --user \
-       causalml \
-       dask \
-       pyarrow \
-       category_encoders
+    && conda install python=3.8.5 -y
+
+RUN activate base && pip install --user causalml 
+
+RUN pip install --user \        
+    dask \
+    pyarrow \
+    category_encoders
