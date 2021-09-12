@@ -2,8 +2,8 @@ from .calcers import *
 from .compute import (registerCalcer,
                       compute_features,)
 
-registerCalcer(PurchasesBaseCalcer)
+registerCalcer(PurchasesAggCalcer)
 registerCalcer(DayOfWeekPurchasesCalcer)
 registerCalcer(AgeLocationCalcer)
-registerCalcer(TargetFromCampaignCalcer)
+registerCalcer(CampaignCalcer)
 
