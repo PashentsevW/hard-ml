@@ -32,8 +32,7 @@ class DayOfWeekPurchasesCalcer(DateFeatureCalcer):
 
         source_flt_dd['day_of_week'] = ((source_flt_dd['date'] % 7)
                                         .astype(CategoricalDtype(list(range(7)))))
-
-        features_dd = source_flt_dd.pivot_table(index=self.keys,
+        features_dd = source_flt_dd.pivot_table(index='customer_id',
                                                 columns='day_of_week',
                                                 values='date',
                                                 aggfunc='count')
