@@ -5,9 +5,11 @@ from typing import Dict, List
 
 import yaml
 from dask import dataframe as dd
+from sklearn.pipeline import Pipeline
 
 from .source import Engine
 from .featurize import compute_features
+from .estimators import build_pipeline
 
 
 _datapath = 'data/'
@@ -23,7 +25,34 @@ def featurize(name: str, config: List[Dict]) -> None:
     features_dd.to_parquet(os.path.join(_datapath, f'{name}_features.parquet'))
 
 
-_tasks = {'featurize': featurize, }
+def train(name: str, config: List[Dict]) -> None:
+    config = {'sample_frac': 0.1,
+              'random_state': 110894,
+              'transformers': [{'name': 'label_encoder',
+                                'args': {'columns': ['location'], }}], 
+              'selectors': [{'name': 'dummy_selector',
+                             'args': dict()}], }
+
+    features_dd = dd.read_parquet(os.path.join(_datapath, f'{name}_features.parquet'))
+    features_df = (features_dd
+                   .sample(frac=config['sample_frac'],
+                           random_state=config['random_state'])
+                   .compute())
+
+    X = features_df.loc[:, features_df.columns[3:]]
+    w = features_df.loc[:, 'target_group_flag'].fillna(0)
+    y = (28 * features_df.loc[:, 'target_purchase_amt'].fillna(0)
+         - features_df.loc[:, 'target_discount_sum'].fillna(0)
+         - 1 * features_df.loc[:, 'target_group_flag'].fillna(0))
+
+    pipeline = Pipeline([('transform', build_pipeline(config['transformers'])),
+                         ('select', build_pipeline(config['selectors']))])
+    
+
+
+
+_tasks = {'featurize': featurize, 
+          'train': train, }
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
