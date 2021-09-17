@@ -11,6 +11,7 @@ from sklearn.model_selection import *
 from .source import Engine
 from .featurise import compute_features
 from .estimators import build_pipeline
+from .metrics import uplift_at_k
 
 
 _engine = Engine()
@@ -70,6 +71,9 @@ def train(name: str, config: List[Dict]) -> None:
     pipeline.fit(X_train, y_train, model__w=w_train)
     uplift = pipeline.predict(X_test)
     print(uplift)
+
+    metric = uplift_at_k(uplift, w.values, y.values, 0.3)
+    print(metric)
 
 
 _tasks = {'featurize': featurize, 
