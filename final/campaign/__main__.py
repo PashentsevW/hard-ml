@@ -4,6 +4,9 @@ import pathlib
 from typing import Dict, List
 
 import yaml
+import pickle
+import numpy as np
+import pandas as pd
 from dask import dataframe as dd
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import *
@@ -16,11 +19,19 @@ from .metrics import uplift_at_k
 
 _engine = Engine()
 _datapath = None
+_metricspath = None
+_artifactspath = None
 
 
 def _init(workpath: str) -> None:
     global _datapath
     _datapath = os.path.join(workpath, 'data')
+
+    global _metricspath
+    _metricspath = os.path.join(workpath, 'metrics')
+
+    global _artifactspath
+    _artifactspath = os.path.join(workpath, 'artifacts')
 
     _engine.registerTable('campaigns', dd.read_csv(os.path.join(_datapath, 'campaigns.csv')))
     _engine.registerTable('customers', dd.read_csv(os.path.join(_datapath, 'customers.csv')))
@@ -66,17 +77,40 @@ def train(name: str, config: List[Dict]) -> None:
                                            test_size=0.3,
                                            random_state=110894,
                                            stratify=w)
-    print(X_train.shape, X_test.shape)
 
     pipeline.fit(X_train, y_train, model__w=w_train)
+
+    with open(os.path.join(_artifactspath, f'{name}_pipeline.pkl'), 'wb') as f:
+        pickle.dump(pipeline, f)
+
     uplift = pipeline.predict(X_test)
-    print(uplift)
 
-    metric = uplift_at_k(uplift, w.values, y.values, 0.3)
-    print(metric)
+    hist, edges = np.histogram(uplift, bins=50)
+    hist_ss = pd.Series(hist,
+                        index=pd.IntervalIndex.from_arrays(left=edges[:-1],
+                                                           right=edges[1:],
+                                                           closed='left'))
+
+    cutoff_step = 0.05 
+    cutoffs = np.arange(cutoff_step, 1, cutoff_step, dtype=np.float16)
+    metrics = np.array([uplift_at_k(uplift, w.values, y.values, k) 
+                        for k in cutoffs])
+    metrics_ss = pd.Series(metrics, index=cutoffs)
+
+    example_df = X.copy()
+    example_df['sample'] = np.nan
+    example_df.loc[X_train.index, 'sample'] = 'train'
+    example_df.loc[X_test.index, 'sample'] = 'test'
+    example_df['w'] = w
+    example_df['y'] = y
+    example_df['uplift'] = pipeline.predict(X)
+
+    hist_ss.to_csv(os.path.join(_metricspath, f'{name}_hist.csv'))
+    metrics_ss.to_csv(os.path.join(_metricspath, f'{name}_metrics.csv'))
+    example_df.to_csv(os.path.join(_metricspath, f'{name}_examples.csv'))
 
 
-_tasks = {'featurize': featurize, 
+_tasks = {'featurise': featurize, 
           'train': train, }
 
 
