@@ -21,6 +21,7 @@ _engine = Engine()
 _datapath = None
 _metricspath = None
 _artifactspath = None
+_submitspath = None
 _random_state = 110894
 
 
@@ -33,6 +34,15 @@ def _init(workpath: str) -> None:
 
     global _artifactspath
     _artifactspath = os.path.join(workpath, 'artifacts')
+
+    global _submitspath
+    _submitspath = os.path.join(workpath, 'submits')
+
+    for path in [_artifactspath,
+                 _metricspath,
+                 _submitspath, ]:
+        if not os.path.exists(path):
+            os.mkdir(path)
 
     _engine.registerTable('campaigns', dd.read_csv(os.path.join(_datapath, 'campaigns.csv')))
     _engine.registerTable('customers', dd.read_csv(os.path.join(_datapath, 'customers.csv')))
@@ -100,8 +110,28 @@ def train(name: str, config: List[Dict]) -> None:
     example_df.to_csv(os.path.join(_metricspath, f'{name}_examples.csv'))
 
 
+def inference(name: str, config: List[Dict]) -> None:
+    features_dd = dd.read_parquet(os.path.join(_datapath, f'{name}_features.parquet'))
+    features_dd = features_dd[features_dd.columns[3:]]
+
+    with open(os.path.join(_artifactspath, f'{name}_pipeline.pkl'), 'rb') as f:
+        pipeline = pickle.load(f)
+
+    features_df = features_dd.compute()
+    features_df['uplift'] = pipeline.predict(features_df)
+    features_df = features_df.loc[features_df['uplift'] > 0.0, :]
+    features_df = features_df.sort_values('uplift', ascending=False)
+
+    N = features_df.shape[0]
+    n = int(N * config['cutoff'])
+
+    customers = features_df.index[:n].to_series()
+    customers.to_csv(os.path.join(_submitspath, f'{name}_submit.csv'), index=False)
+
+
 _tasks = {'featurise': featurize, 
-          'train': train, }
+          'train': train,
+          'inference': inference, }
 
 
 if __name__ == '__main__':
