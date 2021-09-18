@@ -1,7 +1,6 @@
 from typing import List, Dict
 from dask import dataframe as dd
-from .base import FeatureCalcer, TargetCalcer
-from .calcers import *
+from .base import FeatureCalcer
 from ..source import Engine
 
 
@@ -32,33 +31,12 @@ def compute_features(config: List[Dict], engine: Engine) -> dd.DataFrame:
         args['engine'] = engine
 
         calcer = _createCalcer(name, **args)
-
-        if keys is None:
-            keys = calcer.keys
-        
-        if (keys is not None 
-            and keys != calcer.keys):
-            raise ValueError(calcer.keys)
-
         calcers.append(calcer)
 
-    target_dd = None
     compute_results = list()
     for calcer in calcers:
-        if not isinstance(calcer, TargetCalcer):
-            compute_results.append(calcer.compute())
-        else:
-            if target_dd is not None:
-                raise ValueError
-            target_dd = calcer.compute()
-
-    if not isinstance(keys, list):
-        keys = [keys]
+        compute_results.append(calcer.compute())
 
     features_dd = _join_tables(compute_results, how='outer')
-
-    if target_dd is None:
-        return features_dd
     
-    return target_dd.join(features_dd, how='left')
-
+    return features_dd
