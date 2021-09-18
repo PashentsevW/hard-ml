@@ -21,6 +21,7 @@ _engine = Engine()
 _datapath = None
 _metricspath = None
 _artifactspath = None
+_random_state = 110894
 
 
 def _init(workpath: str) -> None:
@@ -44,20 +45,10 @@ def featurize(name: str, config: List[Dict]) -> None:
 
 
 def train(name: str, config: List[Dict]) -> None:
-    config = {'sample_frac': 0.1,
-              'random_state': 110894,
-              'transformers': [{'name': 'label_encoder',
-                                'args': {'columns': ['location'], }}], 
-              'selectors': [{'name': 'dummy_selector',
-                             'args': dict()}],
-              'model': {'name': 'uplift_random_forest',
-                        'args': {'evaluationFunction': 'ED',
-                                 'random_state': 110894,}}, }
-
     features_dd = dd.read_parquet(os.path.join(_datapath, f'{name}_features.parquet'))
     features_df = (features_dd
                    .sample(frac=config['sample_frac'],
-                           random_state=config['random_state'])
+                           random_state=_random_state)
                    .compute())
 
     X = features_df.loc[:, features_df.columns[3:]]
@@ -69,13 +60,12 @@ def train(name: str, config: List[Dict]) -> None:
     pipeline = Pipeline([('transform', build_pipeline(config['transformers'])),
                          ('select', build_pipeline(config['selectors'])),
                          ('model', build_pipeline([config['model']]))])
-    print(pipeline)
 
     (X_train, X_test,
      y_train, y_test,
      w_train, w_test, ) = train_test_split(X, y, w,
-                                           test_size=0.3,
-                                           random_state=110894,
+                                           test_size=config['validation']['test_size'],
+                                           random_state=_random_state,
                                            stratify=w)
 
     pipeline.fit(X_train, y_train, model__w=w_train)
@@ -85,13 +75,13 @@ def train(name: str, config: List[Dict]) -> None:
 
     uplift = pipeline.predict(X_test)
 
-    hist, edges = np.histogram(uplift, bins=50)
+    hist, edges = np.histogram(uplift, bins=config['evaluation']['bin_count'])
+    edges = np.around(edges, 2)
     hist_ss = pd.Series(hist,
-                        index=pd.IntervalIndex.from_arrays(left=edges[:-1],
-                                                           right=edges[1:],
+                        index=pd.IntervalIndex.from_breaks(edges,
                                                            closed='left'))
 
-    cutoff_step = 0.05 
+    cutoff_step = config['evaluation']['cutoff_step']
     cutoffs = np.arange(cutoff_step, 1, cutoff_step, dtype=np.float16)
     metrics = np.array([uplift_at_k(uplift, w.values, y.values, k) 
                         for k in cutoffs])
