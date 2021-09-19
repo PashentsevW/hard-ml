@@ -78,6 +78,10 @@ class Imputer(BaseEstimator, TransformerMixin):
         else:
             check_X_y(X, y, dtype=None, force_all_finite='allow-nan')
 
+        if self.columns == 'all':
+            self.columns = X.columns.tolist()
+            self.fill_values = [self.fill_values] * len(self.columns)
+
         for i, column in enumerate(self.columns):
             fill_value = self.fill_values[i]
 
