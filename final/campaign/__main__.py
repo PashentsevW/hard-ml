@@ -155,14 +155,17 @@ if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('-n', '--name', type=str, required=True)
     ap.add_argument('-t', '--task', type=str, required=True)
-    ap.add_argument('-c', '--config', type=pathlib.Path, required=True)
+    ap.add_argument('-c', '--config', type=str, required=True)
     ap.add_argument('-d', '--work-dir', type=pathlib.Path, required=False, default='.')
 
     args = vars(ap.parse_args())
 
     _init(args['work_dir'])
     
-    with open(args['config'], 'r') as f:
+    with open(os.path.join(args['work_dir'],
+                           'configs',
+                           args['task'],
+                           args['config'] + '.yaml'), 'r') as f:
         config = yaml.load(f, yaml.Loader)
     
     _tasks[args['task']](args['name'], config)
