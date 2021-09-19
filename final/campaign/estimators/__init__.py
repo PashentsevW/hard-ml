@@ -12,8 +12,10 @@ for estimator in [LabelEncoder,
                   Imputer,
                   DummySelector, ]:
     _estimators[estimator.name] = estimator
-
-_estimators['uplift_random_forest'] = UpliftRandomForest
+_estimators['random_forest'] = RandomForest
+_estimators['meta_s'] = MetaSRegressor
+_estimators['meta_t'] = MetaTRegressor
+_estimators['meta_x'] = MetaXRegressor
 
 
 def build_pipeline(config: List[Dict]) -> Pipeline:
