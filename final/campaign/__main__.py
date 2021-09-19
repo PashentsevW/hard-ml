@@ -55,7 +55,8 @@ def featurize(name: str, config: List[Dict]) -> None:
 
 
 def train(name: str, config: List[Dict]) -> None:
-    features_dd = dd.read_parquet(os.path.join(_datapath, f'{name}_features.parquet'))
+    featurise_name = config['featurise']
+    features_dd = dd.read_parquet(os.path.join(_datapath, f'{featurise_name}_features.parquet'))
     features_df = (features_dd
                    .sample(frac=config['sample_frac'],
                            random_state=_random_state)
@@ -84,7 +85,6 @@ def train(name: str, config: List[Dict]) -> None:
         pickle.dump(pipeline, f)
 
     uplift = pipeline.predict(X_test)
-
     hist, edges = np.histogram(uplift, bins=config['evaluation']['bin_count'])
     edges = np.around(edges, 2)
     hist_ss = pd.Series(hist,
@@ -93,9 +93,25 @@ def train(name: str, config: List[Dict]) -> None:
 
     cutoff_step = config['evaluation']['cutoff_step']
     cutoffs = np.arange(cutoff_step, 1, cutoff_step, dtype=np.float16)
-    metrics = np.array([uplift_at_k(uplift, w.values, y.values, k) 
-                        for k in cutoffs])
-    metrics_ss = pd.Series(metrics, index=cutoffs)
+
+    n_bootstraps = config['evaluation']['n_bootstraps']
+    bootstrap_size = int(len(X_test) * config['evaluation']['bootstrap_size'])
+    np.random.seed(_random_state)
+    uplifts = list()
+    for _ in range(n_bootstraps):
+        idx = np.random.choice(X_test.index, bootstrap_size, replace=True)
+        uplifts.append(pipeline.predict(X_test.loc[idx, :]))
+    metrics = list()
+    for k in cutoffs:
+        values = list()
+        for i in range(n_bootstraps):
+            values.append(uplift_at_k(uplifts[i],
+                                      w_test[idx].values,
+                                      y_test[idx].values,
+                                      k))
+        metrics.append((k, np.mean(values), np.std(values)))
+    metrics_df = pd.DataFrame.from_records(metrics, columns=['k', 'mean', 'std'])
+    metrics_df = metrics_df.set_index('k')
 
     example_df = X.copy()
     example_df['sample'] = np.nan
@@ -106,12 +122,13 @@ def train(name: str, config: List[Dict]) -> None:
     example_df['uplift'] = pipeline.predict(X)
 
     hist_ss.to_csv(os.path.join(_metricspath, f'{name}_hist.csv'))
-    metrics_ss.to_csv(os.path.join(_metricspath, f'{name}_metrics.csv'))
+    metrics_df.to_csv(os.path.join(_metricspath, f'{name}_metrics.csv'))
     example_df.to_csv(os.path.join(_metricspath, f'{name}_examples.csv'))
 
 
 def inference(name: str, config: List[Dict]) -> None:
-    features_dd = dd.read_parquet(os.path.join(_datapath, f'{name}_features.parquet'))
+    featurise_name = config['featurise']
+    features_dd = dd.read_parquet(os.path.join(_datapath, f'{featurise_name}_features.parquet'))
     features_dd = features_dd[features_dd.columns[3:]]
 
     with open(os.path.join(_artifactspath, f'{name}_pipeline.pkl'), 'rb') as f:
