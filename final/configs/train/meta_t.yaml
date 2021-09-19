@@ -15,10 +15,8 @@ selectors:
     name: dummy_selector
     args: {}
 model: 
-  name: random_forest  
-  args: 
-    evaluationFunction: ED
-    random_state: 110894
+  name: meta_t 
+  args: {}
 validation: 
   test_size: 0.3
 evaluation: 
