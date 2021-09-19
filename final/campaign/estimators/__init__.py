@@ -9,6 +9,7 @@ from .models import *
 
 _estimators = {}
 for estimator in [LabelEncoder,
+                  Imputer,
                   DummySelector, ]:
     _estimators[estimator.name] = estimator
 
