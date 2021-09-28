@@ -66,9 +66,9 @@ class CampaignCalcer(FeatureCalcer):
         self.days_offer = days_offer
 
     def compute(self) -> dd.DataFrame:
-        receipts_dd = self.engine.getTable('receipts')
+        customers_dd = self.engine.getTable('customers')
         campaigns_dd = self.engine.getTable('campaigns')
-        campaigns_dd = campaigns_dd.set_index(self.keys)
+        receipts_dd = self.engine.getTable('receipts')
 
         mask_offer = ((receipts_dd['date'] >= self.date_start_offer)
                       & (receipts_dd['date'] < (self.date_start_offer + self.days_offer)))
@@ -80,9 +80,12 @@ class CampaignCalcer(FeatureCalcer):
                                  'discount': 'sum',}))
         receipts_agg_dd.columns = ['target_purchase_amt',
                                    'target_discount_sum',]
+        receipts_agg_dd = receipts_agg_dd.reset_index()
         
-        features_dd = receipts_agg_dd.join(campaigns_dd[['target_group_flag']],
-                                           how='outer')
+        features_dd = (customers_dd[['customer_id']]
+                       .merge(campaigns_dd[['customer_id', 'target_group_flag']], how='left', on='customer_id')
+                       .merge(receipts_agg_dd, how='left', on='customer_id'))
         features_dd = features_dd.fillna(0)
+        features_dd = features_dd.set_index('customer_id')
         return features_dd    
 
