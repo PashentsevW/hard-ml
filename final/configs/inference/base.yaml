@@ -1,2 +1,2 @@
-featurise: base
-cutoff: 0.10
+featurise: test
+cutoff: 0.50

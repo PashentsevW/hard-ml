@@ -1,4 +1,4 @@
-featurise: base
+featurise: test
 sample_frac: 0.1
 transformers: 
   -
