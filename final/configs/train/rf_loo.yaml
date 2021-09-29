@@ -7,9 +7,9 @@ transformers:
       columns: all
       fill_values: 0
   -
-    name: label_encoder
+    name: loo_mean_target_encoder
     args: 
-      columns: ['location'] 
+      cols: ['location'] 
 selectors: 
   -
     name: dummy_selector

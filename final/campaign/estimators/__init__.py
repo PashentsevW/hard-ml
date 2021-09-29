@@ -10,6 +10,7 @@ from .models import *
 _estimators = {}
 for estimator in [LabelEncoder,
                   Imputer,
+                  LOOMeanTargetEncoder,
                   DummySelector, ]:
     _estimators[estimator.name] = estimator
 _estimators['random_forest'] = RandomForest

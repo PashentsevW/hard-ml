@@ -1,3 +1,5 @@
+from typing import List
+
 from pandas.api.types import CategoricalDtype
 from dask import dataframe as dd
 
@@ -26,6 +28,17 @@ class DayOfWeekPurchasesCalcer(DateFeatureCalcer):
     name = 'day_of_week_purchases'
     keys = ['customer_id']
 
+    def __init__(self,
+                 engine: Engine,
+                 col_date: str,
+                 date_to: int,
+                 delta: int,
+                 weekends: List[int] = None,):
+        super().__init__(engine,
+                         col_date,
+                         date_to, delta)
+        self.weekends = weekends
+
     def compute(self) -> dd.DataFrame:
         source_dd = self.engine.getTable('receipts')
         source_flt_dd = self.flt(source_dd)
@@ -38,6 +51,13 @@ class DayOfWeekPurchasesCalcer(DateFeatureCalcer):
                                                 aggfunc='count')
         features_dd.columns = [f'purchases_wd{f}_{self.delta}d__count' 
                                for f in features_dd.columns]
+
+        if not self.weekends is None or len(self.weekends) == 0:
+            col_weekends = [f'purchases_wd{wd}_{self.delta}d__count' 
+                            for wd in self.weekends]
+            features_dd[f'weekend_purchases_{self.delta}d__ratio'] = (features_dd[col_weekends].sum(axis=1) 
+                                                                      / features_dd.sum(axis=1))
+
         return features_dd
 
 

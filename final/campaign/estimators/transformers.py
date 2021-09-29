@@ -4,6 +4,7 @@ from pandas import DataFrame, Series
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.utils import check_array, check_X_y
 from sklearn.utils.validation import check_is_fitted
+from category_encoders import LeaveOneOutEncoder
 
 
 class LabelEncoder(BaseEstimator, TransformerMixin):
@@ -68,6 +69,7 @@ class Imputer(BaseEstimator, TransformerMixin):
         self.columns = columns
         self.fill_values = fill_values
         self.copy = copy
+        self._fitted = False
 
     def fit(self,
             X: DataFrame,
@@ -114,4 +116,23 @@ class Imputer(BaseEstimator, TransformerMixin):
             X_transformed.loc[:, column] = X[column].fillna(self.fill_values[i])
 
         return X_transformed
-    
+
+
+class LOOMeanTargetEncoder(LeaveOneOutEncoder):
+    name = 'loo_mean_target_encoder'
+
+    def __init__(self,
+                 cols: List[str],
+                 drop_invariant=False,
+                 handle_unknown='value',
+                 handle_missing='value',
+                 random_state=None,
+                 sigma=None):
+        super().__init__(verbose=0,
+                         cols=cols,
+                         drop_invariant=drop_invariant,
+                         return_df=True,
+                         handle_unknown=handle_unknown,
+                         handle_missing=handle_missing,
+                         random_state=random_state,
+                         sigma=sigma)
