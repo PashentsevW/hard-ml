@@ -15,9 +15,9 @@ class LabelEncoder(BaseEstimator, TransformerMixin):
                  copy: bool = True,
                  **kwargs):
         super().__init__(**kwargs)
-        self.columns = {c: None for c in columns}
+        self.columns = columns
         self.copy = copy
-        self._fitted = False
+        # self._fitted = False
 
     def fit(self,
             X: DataFrame,
@@ -27,6 +27,8 @@ class LabelEncoder(BaseEstimator, TransformerMixin):
             check_array(X, dtype=None, force_all_finite='allow-nan')
         else:
             check_X_y(X, y, dtype=None, force_all_finite='allow-nan')
+
+        self.columns = {c: None for c in self.columns}
 
         for column in self.columns:
             values = X.loc[X[column].notna(), column].unique()

@@ -8,6 +8,7 @@ import pickle
 import numpy as np
 import pandas as pd
 from dask import dataframe as dd
+from sklearn.base import clone
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import *
 
@@ -79,12 +80,40 @@ def train(name: str, config: List[Dict]) -> None:
                                            random_state=_random_state,
                                            stratify=w)
 
-    pipeline.fit(X_train, y_train, model__w=w_train)
+    sampler = ParameterSampler(config['search']['param_distributions'],
+                               config['search']['n_iter'],
+                               random_state=_random_state)
+    spliter = StratifiedKFold(config['search']['cv'],
+                              shuffle=True,
+                              random_state=_random_state)
+    results = list()
+    for params in list(sampler):
+        for train_idx, test_idx in spliter.split(X_train, w_train):
+            iter_pipeline = clone(pipeline,)
+            iter_pipeline.set_params(**params)
+
+            _ = iter_pipeline.fit(X_train.iloc[train_idx, :],
+                                y_train.iloc[train_idx],
+                                model__w=w_train.iloc[train_idx])
+            uplift = iter_pipeline.predict(X_train.iloc[test_idx, :])
+
+            score = uplift_at_k(uplift,
+                                w_train.iloc[test_idx].values,
+                                y_train.iloc[test_idx].values,
+                                0.3)
+            results.append((score, iter_pipeline))
+    
+    best_oof_score, best_estimator = list(sorted(results, key=lambda x: x[0]))[-1]
+    oos_score = uplift_at_k(best_estimator.predict(X_test),
+                            w_test.values,
+                            y_test.values,
+                            0.3)
+    print(best_oof_score, oos_score, best_estimator)
 
     with open(os.path.join(_artifactspath, f'{name}_pipeline.pkl'), 'wb') as f:
-        pickle.dump(pipeline, f)
+        pickle.dump(best_estimator, f)
 
-    uplift = pipeline.predict(X_test)
+    uplift = best_estimator.predict(X_test)
     hist, edges = np.histogram(uplift, bins=config['evaluation']['bin_count'])
     edges = np.around(edges, 2)
     hist_ss = pd.Series(hist,
@@ -100,7 +129,7 @@ def train(name: str, config: List[Dict]) -> None:
     uplifts = list()
     for _ in range(n_bootstraps):
         idx = np.random.choice(X_test.index, bootstrap_size, replace=True)
-        uplifts.append(pipeline.predict(X_test.loc[idx, :]))
+        uplifts.append(best_estimator.predict(X_test.loc[idx, :]))
     metrics = list()
     for k in cutoffs:
         values = list()
