@@ -1,2 +1,2 @@
-featurise: base
-cutoff: 0.48
+featurise: advanced
+cutoffs: [0.30, 0.50]

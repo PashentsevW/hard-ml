@@ -148,7 +148,7 @@ def train(name: str, config: List[Dict]) -> None:
     example_df.loc[X_test.index, 'sample'] = 'test'
     example_df['w'] = w
     example_df['y'] = y
-    example_df['uplift'] = pipeline.predict(X)
+    example_df['uplift'] = best_estimator.predict(X)
 
     hist_ss.to_csv(os.path.join(_metricspath, f'{name}_hist.csv'))
     metrics_df.to_csv(os.path.join(_metricspath, f'{name}_metrics.csv'))
@@ -169,10 +169,11 @@ def inference(name: str, config: List[Dict]) -> None:
     features_df = features_df.sort_values('uplift', ascending=False)
 
     N = features_df.shape[0]
-    n = int(N * config['cutoff'])
-
-    customers = features_df.index[:n].to_series()
-    customers.to_csv(os.path.join(_submitspath, f'{name}_submit.csv'), index=False)
+    for cutoff in config['cutoffs']:
+        n = int(N * cutoff)
+        customers = features_df.index[:n].to_series()
+        
+        customers.to_csv(os.path.join(_submitspath, f'{name}_{cutoff}_submit.csv'), index=False)
 
 
 _tasks = {'featurise': featurize, 
