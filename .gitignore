@@ -3,6 +3,7 @@
 *.csv
 *.parquet
 *.json
+!devcontainer.json
 *.jl
 data/
 submits/
