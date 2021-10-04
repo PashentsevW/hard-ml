@@ -8,6 +8,7 @@ import pickle
 import numpy as np
 import pandas as pd
 from dask import dataframe as dd
+from sklearn.base import clone
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import *
 
@@ -55,7 +56,8 @@ def featurize(name: str, config: List[Dict]) -> None:
 
 
 def train(name: str, config: List[Dict]) -> None:
-    features_dd = dd.read_parquet(os.path.join(_datapath, f'{name}_features.parquet'))
+    featurise_name = config['featurise']
+    features_dd = dd.read_parquet(os.path.join(_datapath, f'{featurise_name}_features.parquet'))
     features_df = (features_dd
                    .sample(frac=config['sample_frac'],
                            random_state=_random_state)
@@ -78,13 +80,40 @@ def train(name: str, config: List[Dict]) -> None:
                                            random_state=_random_state,
                                            stratify=w)
 
-    pipeline.fit(X_train, y_train, model__w=w_train)
+    sampler = ParameterSampler(config['search']['param_distributions'],
+                               config['search']['n_iter'],
+                               random_state=_random_state)
+    spliter = StratifiedKFold(config['search']['cv'],
+                              shuffle=True,
+                              random_state=_random_state)
+    results = list()
+    for params in list(sampler):
+        for train_idx, test_idx in spliter.split(X_train, w_train):
+            iter_pipeline = clone(pipeline,)
+            iter_pipeline.set_params(**params)
+
+            _ = iter_pipeline.fit(X_train.iloc[train_idx, :],
+                                y_train.iloc[train_idx],
+                                model__w=w_train.iloc[train_idx])
+            uplift = iter_pipeline.predict(X_train.iloc[test_idx, :])
+
+            score = uplift_at_k(uplift,
+                                w_train.iloc[test_idx].values,
+                                y_train.iloc[test_idx].values,
+                                0.3)
+            results.append((score, iter_pipeline))
+    
+    best_oof_score, best_estimator = list(sorted(results, key=lambda x: x[0]))[-1]
+    oos_score = uplift_at_k(best_estimator.predict(X_test),
+                            w_test.values,
+                            y_test.values,
+                            0.3)
+    print(best_oof_score, oos_score, best_estimator)
 
     with open(os.path.join(_artifactspath, f'{name}_pipeline.pkl'), 'wb') as f:
-        pickle.dump(pipeline, f)
+        pickle.dump(best_estimator, f)
 
-    uplift = pipeline.predict(X_test)
-
+    uplift = best_estimator.predict(X_test)
     hist, edges = np.histogram(uplift, bins=config['evaluation']['bin_count'])
     edges = np.around(edges, 2)
     hist_ss = pd.Series(hist,
@@ -93,9 +122,25 @@ def train(name: str, config: List[Dict]) -> None:
 
     cutoff_step = config['evaluation']['cutoff_step']
     cutoffs = np.arange(cutoff_step, 1, cutoff_step, dtype=np.float16)
-    metrics = np.array([uplift_at_k(uplift, w.values, y.values, k) 
-                        for k in cutoffs])
-    metrics_ss = pd.Series(metrics, index=cutoffs)
+
+    n_bootstraps = config['evaluation']['n_bootstraps']
+    bootstrap_size = int(len(X_test) * config['evaluation']['bootstrap_size'])
+    np.random.seed(_random_state)
+    uplifts = list()
+    for _ in range(n_bootstraps):
+        idx = np.random.choice(X_test.index, bootstrap_size, replace=True)
+        uplifts.append(best_estimator.predict(X_test.loc[idx, :]))
+    metrics = list()
+    for k in cutoffs:
+        values = list()
+        for i in range(n_bootstraps):
+            values.append(uplift_at_k(uplifts[i],
+                                      w_test[idx].values,
+                                      y_test[idx].values,
+                                      k))
+        metrics.append((k, np.mean(values), np.std(values)))
+    metrics_df = pd.DataFrame.from_records(metrics, columns=['k', 'mean', 'std'])
+    metrics_df = metrics_df.set_index('k')
 
     example_df = X.copy()
     example_df['sample'] = np.nan
@@ -103,15 +148,16 @@ def train(name: str, config: List[Dict]) -> None:
     example_df.loc[X_test.index, 'sample'] = 'test'
     example_df['w'] = w
     example_df['y'] = y
-    example_df['uplift'] = pipeline.predict(X)
+    example_df['uplift'] = best_estimator.predict(X)
 
     hist_ss.to_csv(os.path.join(_metricspath, f'{name}_hist.csv'))
-    metrics_ss.to_csv(os.path.join(_metricspath, f'{name}_metrics.csv'))
+    metrics_df.to_csv(os.path.join(_metricspath, f'{name}_metrics.csv'))
     example_df.to_csv(os.path.join(_metricspath, f'{name}_examples.csv'))
 
 
 def inference(name: str, config: List[Dict]) -> None:
-    features_dd = dd.read_parquet(os.path.join(_datapath, f'{name}_features.parquet'))
+    featurise_name = config['featurise']
+    features_dd = dd.read_parquet(os.path.join(_datapath, f'{featurise_name}_features.parquet'))
     features_dd = features_dd[features_dd.columns[3:]]
 
     with open(os.path.join(_artifactspath, f'{name}_pipeline.pkl'), 'rb') as f:
@@ -123,10 +169,11 @@ def inference(name: str, config: List[Dict]) -> None:
     features_df = features_df.sort_values('uplift', ascending=False)
 
     N = features_df.shape[0]
-    n = int(N * config['cutoff'])
-
-    customers = features_df.index[:n].to_series()
-    customers.to_csv(os.path.join(_submitspath, f'{name}_submit.csv'), index=False)
+    for cutoff in config['cutoffs']:
+        n = int(N * cutoff)
+        customers = features_df.index[:n].to_series()
+        
+        customers.to_csv(os.path.join(_submitspath, f'{name}_{cutoff}_submit.csv'), index=False)
 
 
 _tasks = {'featurise': featurize, 
@@ -138,14 +185,17 @@ if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('-n', '--name', type=str, required=True)
     ap.add_argument('-t', '--task', type=str, required=True)
-    ap.add_argument('-c', '--config', type=pathlib.Path, required=True)
+    ap.add_argument('-c', '--config', type=str, required=True)
     ap.add_argument('-d', '--work-dir', type=pathlib.Path, required=False, default='.')
 
     args = vars(ap.parse_args())
 
     _init(args['work_dir'])
     
-    with open(args['config'], 'r') as f:
+    with open(os.path.join(args['work_dir'],
+                           'configs',
+                           args['task'],
+                           args['config'] + '.yaml'), 'r') as f:
         config = yaml.load(f, yaml.Loader)
     
     _tasks[args['task']](args['name'], config)
