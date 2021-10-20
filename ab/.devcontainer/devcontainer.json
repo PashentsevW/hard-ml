@@ -2,5 +2,17 @@
 	"name": "hard-ml-ab",
 	"image": "antiguru11/hard-ml:ab",
 	"settings": {},
-	"extensions": []
+	"extensions": [
+		"donjayamanne.git-extension-pack",
+		"mhutchie.git-graph",
+		"donjayamanne.githistory",
+		"codezombiech.gitignore",
+		"eamodio.gitlens",
+		"ms-toolsai.jupyter",
+		"ms-toolsai.jupyter-keymap",
+		"ms-toolsai.jupyter-renderers",
+		"ziyasal.vscode-open-in-github",
+		"ms-python.vscode-pylance",
+		"ms-python.python"
+	]
 }
