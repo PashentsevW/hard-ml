@@ -19,7 +19,9 @@ RUN  echo \
 
 RUN apt-get update && apt-get install -y docker-ce docker-ce-cli containerd.io
 
-RUN python3 -m pip install --user virtualenv uwsgi
+RUN python3 -m pip install virtualenv uwsgi
+
+RUN mkdir /venvs
 
 RUN echo 'alias python=python3' >> ~/.bashrc \
     && echo 'alias pip=pip3' >> ~/.bashrc
