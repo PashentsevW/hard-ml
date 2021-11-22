@@ -10,4 +10,6 @@ CMD ["/usr/local/bin/uwsgi", \
      "--wsgi-file", "app.py", \
      "--master", \
      "--processes", "2", \
-     "--threads", "5"]
+     "--threads", "5", \
+     "--lazy-apps", \
+     "--master-fifo=/var/master.fifo"]
