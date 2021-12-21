@@ -1,0 +1,19 @@
+{
+	"name": "hard-ml-pricing2",
+	"image": "antiguru11/hard-ml:pricing2",
+	"settings": {},
+	"extensions": [
+		"donjayamanne.git-extension-pack",
+		"mhutchie.git-graph",
+		"donjayamanne.githistory",
+		"codezombiech.gitignore",
+		"eamodio.gitlens",
+		"ms-toolsai.jupyter",
+		"ms-toolsai.jupyter-keymap",
+		"ms-toolsai.jupyter-renderers",
+		"ziyasal.vscode-open-in-github",
+		"ms-python.vscode-pylance",
+		"ms-python.python",
+		"formulahendry.terminal"
+	]
+}
