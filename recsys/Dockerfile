@@ -13,7 +13,8 @@ RUN groupadd --gid $USER_GID $USERNAME \
 
 RUN sudo apt-get update \
     && sudo apt-get install -y --no-install-recommends \
-        git \
-        ca-certificates
+        build-essential \
+        ca-certificates \
+        git
 
 RUN sudo rm -rf /var/cache/apt/archives /var/lib/apt/lists/*
