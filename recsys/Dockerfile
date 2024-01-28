@@ -15,6 +15,7 @@ RUN sudo apt-get update \
     && sudo apt-get install -y --no-install-recommends \
         build-essential \
         ca-certificates \
-        git
+        git \
+        openssh-client
 
 RUN sudo rm -rf /var/cache/apt/archives /var/lib/apt/lists/*
