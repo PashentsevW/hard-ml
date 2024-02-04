@@ -1,14 +1,28 @@
+from typing import Any, Sequence, Union
+
 import numpy
-from sklearn.metrics import make_scorer
+from sklearn.utils.validation import check_array, check_consistent_length, column_or_1d
+
+ItemIdType = Union[int, str]
 
 
-def _hitrate_score(y_true: numpy.ndarray, y_pred: numpy.ndarray, k: int) -> float:
-    values = []
+def _intersection(y_true: Sequence[ItemIdType], y_pred: Sequence[ItemIdType], k: int) -> int:
+    if len(y_true) == 0:
+        return 0
+
+    y_true = column_or_1d(check_array(y_true, dtype=None, ensure_2d=False))
+    y_pred = column_or_1d(check_array(y_pred, dtype=None, ensure_2d=False))
+
+    return numpy.isin(y_pred[:k], y_true, assume_unique=True).any().astype(numpy.int8)
+
+
+def hitrate_score(y_true: numpy.ndarray, y_pred: numpy.ndarray, k: int) -> float:
+    y_true = check_array(y_true, dtype=numpy.object_, ensure_2d=False)
+    y_pred = check_array(y_pred, dtype=numpy.object_, ensure_2d=False)
+    check_consistent_length(y_true, y_pred)
+
+    scores = []
     for i in range(y_true.shape[0]):
-        if y_true[i].shape[0] == 0:
-            continue
-        values.append(int(numpy.intersect1d(y_true[i], y_pred[i][:k], assume_unique=True).shape[0] > 0))
-    return numpy.asarray(values).mean()
+        scores.append(_intersection(y_true[i], y_pred[i], k))
 
-
-hitrate_at10 = make_scorer(_hitrate_score, k=10)
+    return numpy.array(scores).mean()
