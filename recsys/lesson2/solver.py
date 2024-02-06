@@ -56,7 +56,7 @@ pipelines = {
                                   'keywords'),
                                  remainder='drop')),
         ('normalizer', Normalizer()),
-        ('recommender', SimilarItemsContentRecommender(distance_metric='cosine'))])
+        ('recommender', SimilarItemsContentRecommender())])
 }
 
 
@@ -113,7 +113,7 @@ def fit_pipeline(train_df: pandas.DataFrame,
 
             logging.info('Search complete, find best params: %s', search_result.best_params_)
         else:
-            raise ValueError('best_estimator_ not supported')
+            raise ValueError('best_params_ not supported')
     
     return pipeline.fit(train_df, train_df[title_id_column].to_numpy())
 
