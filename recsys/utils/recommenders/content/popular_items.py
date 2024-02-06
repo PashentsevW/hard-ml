@@ -1,6 +1,10 @@
 import numpy
 from sklearn.base import BaseEstimator
-from sklearn.utils.validation import check_array, check_is_fitted, check_scalar, column_or_1d
+from sklearn.utils.validation import (check_array,
+                                      check_consistent_length,
+                                      check_is_fitted,
+                                      check_scalar,
+                                      column_or_1d)
 
 
 class PopularItemsContentRecommender(BaseEstimator):
@@ -10,6 +14,7 @@ class PopularItemsContentRecommender(BaseEstimator):
     def fit(self, X: numpy.ndarray, y: numpy.ndarray) -> 'PopularItemsContentRecommender':
         item_ids = check_array(y, dtype=None, ensure_2d=False)
         popularity = column_or_1d(check_array(X, ensure_2d=False, force_all_finite='allow-nan'))
+        check_consistent_length(item_ids, popularity)
 
         self.popular_items = item_ids[(-popularity).argsort()]
 

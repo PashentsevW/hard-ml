@@ -6,13 +6,17 @@ from datetime import datetime
 import boto3
 import numpy
 import pandas
-from sklearn.compose import make_column_selector, make_column_transformer
+from sklearn.compose import make_column_transformer
+from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.impute import SimpleImputer
+from sklearn.model_selection import GridSearchCV, PredefinedSplit
 from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import Normalizer
 
 from utils.io.s3 import download_dataframe, upload_dataframe
 from utils.recommenders.content import (PopularItemsContentRecommender,
-                                        RandomItemsContentRecommender)
+                                        RandomItemsContentRecommender,
+                                        SimilarItemsContentRecommender)
 from utils.validation.metrics import hitrate_score
 
 s3_bucket = 'cloud-pashentsevw-default'
@@ -32,11 +36,86 @@ pipelines = {
     'random': Pipeline([('recommender', RandomItemsContentRecommender(random_state))]),
     'popular': Pipeline([('popularity_transformer',
                            make_column_transformer((SimpleImputer(strategy='constant', fill_value=-1),
-                                                    make_column_selector('rating_value')),
+                                                    ['rating_value']),
                                                    remainder='drop')),
-                          ('recommender', PopularItemsContentRecommender())])
+                          ('recommender', PopularItemsContentRecommender())]),
+    'keywords': Pipeline([
+        ('keywords_vectorize',
+         make_column_transformer((CountVectorizer(lowercase=False,
+                                                  tokenizer=lambda keywords: keywords,
+                                                  token_pattern=None),
+                                  'keywords'),
+                                 remainder='drop')),
+        ('normalizer', Normalizer()),
+        ('recommender', SimilarItemsContentRecommender())]),
+    'similarity': Pipeline([
+        ('keywords_vectorize',
+         make_column_transformer((CountVectorizer(lowercase=False,
+                                                  tokenizer=lambda keywords: keywords,
+                                                  token_pattern=None),
+                                  'keywords'),
+                                 remainder='drop')),
+        ('normalizer', Normalizer()),
+        ('recommender', SimilarItemsContentRecommender(distance_metric='cosine'))])
 }
 
+
+def score_wrapper(estimator, X, y) -> float:
+    if isinstance(estimator, Pipeline):
+        y_pred = estimator[-1].predict(X[title_id_column].to_numpy().reshape(-1, 1), k=at_k)
+        return hitrate_score(y, y_pred, at_k)
+    else:
+        raise ValueError(estimator)
+
+
+searchers = {
+    'similarity': (
+        GridSearchCV,
+        {'param_grid': { 'recommender__distance_metric': ['cosine', 'l1', 'l2', 'euclidean']},
+         'scoring': score_wrapper,
+         'refit': False,
+         'verbose': 4})
+}
+
+
+def fit_pipeline(train_df: pandas.DataFrame,
+                 valid_df: pandas.DataFrame,
+                 pipeline_id: str) -> Pipeline:
+    pipeline = pipelines[pipeline_id]
+
+    if pipeline_id in searchers:
+        logging.info('Prepare searcher for "%s"', pipeline_id)
+        
+        X = pandas.concat([train_df,
+                           valid_df[[title_id_column]].merge(train_df, on=title_id_column)],
+                          ignore_index=True)
+        
+        logging.info('Got X, with shape %s', X.shape)
+
+        y = pandas.concat([train_df.loc[:, title_id_column],
+                           valid_df.loc[:, relevant_titles_column].apply(lambda titles: titles.tolist())],
+                          ignore_index=True)
+        y = y.to_numpy(dtype=numpy.object_)
+
+        logging.info('Got y, with shape %s', y.shape)
+
+        test_fold = numpy.hstack([numpy.zeros(train_df.shape[0], dtype=numpy.int_),
+                                  numpy.ones(valid_df.shape[0], dtype=numpy.int_)])
+        test_fold -= 1
+
+        searcher = searchers[pipeline_id][0](pipeline,
+                                             cv=PredefinedSplit(test_fold),
+                                             **searchers[pipeline_id][1])
+        search_result = searcher.fit(X, y)
+
+        if search_result.best_params_:
+            pipeline.set_params(**search_result.best_params_)
+
+            logging.info('Search complete, find best params: %s', search_result.best_params_)
+        else:
+            raise ValueError('best_estimator_ not supported')
+    
+    return pipeline.fit(train_df, train_df[title_id_column].to_numpy())
 
 if __name__ == '__main__':
     run_dt = datetime.now()
@@ -75,8 +154,7 @@ if __name__ == '__main__':
 
     logging.info('Fit pipeline "%s"', args.pipeline)
 
-    pipeline = pipelines[args.pipeline]
-    pipeline.fit(train_df, train_df[title_id_column].to_numpy())
+    pipeline = fit_pipeline(train_df, test_df, args.pipeline)
 
     logging.info('Pipeline fitted,\n%s', pipeline)
 
