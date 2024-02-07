@@ -28,6 +28,7 @@ data_path = s3_folder
 submission_path = s3_folder / 'submissions'
 
 title_id_column = 'title_id'
+recs_column = 'recs'
 relevant_titles_column = 'relevant_titles'
 
 at_k = 10
@@ -54,6 +55,22 @@ pipelines = {
                                                   tokenizer=lambda keywords: keywords,
                                                   token_pattern=None),
                                   'keywords'),
+                                 (CountVectorizer(lowercase=False,
+                                                  tokenizer=lambda stars: stars,
+                                                  token_pattern=None),
+                                  'stars'),
+                                 (CountVectorizer(lowercase=False,
+                                                  tokenizer=lambda directors: directors,
+                                                  token_pattern=None),
+                                  'directors'),
+                                 (CountVectorizer(lowercase=False,
+                                                  tokenizer=lambda creators: creators,
+                                                  token_pattern=None),
+                                  'creators'),
+                                 (CountVectorizer(lowercase=False,
+                                                  tokenizer=lambda genre: genre if isinstance(genre, numpy.ndarray) else [],
+                                                  token_pattern=None),
+                                  'genre'),
                                  remainder='drop')),
         ('normalizer', Normalizer()),
         ('recommender', SimilarItemsContentRecommender())])
@@ -169,10 +186,20 @@ if __name__ == '__main__':
 
     logging.info('Save recommendations')
 
-    submission_df = test_df
-    submission_df.loc[:, relevant_titles_column] = (
-        pandas.DataFrame(y_pred).apply(lambda row: row.tolist(), axis=1)
-    )
+    y_pred = pipeline[-1].predict(train_df[title_id_column].to_numpy().reshape(-1, 1), k=at_k)
+
+    submission_df = train_df.loc[:, [title_id_column]]
+
+    if y_pred.ndim == 1:
+        submission_df.loc[:, recs_column] = (
+            pandas.Series(y_pred, index=submission_df.index)
+            .apply(lambda row: numpy.array(row).flatten().tolist())
+        )
+    else:
+        submission_df.loc[:, recs_column] = (
+            pandas.DataFrame(y_pred, index=submission_df.index)
+            .apply(lambda row: numpy.array(row).flatten().tolist(), axis=1)
+        )
 
     logging.info('Got submissions data, with shape %s', submission_df.shape)
 
