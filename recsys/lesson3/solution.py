@@ -50,7 +50,10 @@ def user_ndcg(y_rel: List[Any], y_rec: List[Any], k: int = 10) -> float:
     :param k: number of top recommended items
     :return: ndcg metric for user recommendations
     """
-    return ...
+    dcg = np.where(np.isin(y_rec[:k], y_rel), 1 / np.log2(1 + np.arange(1, len(y_rec[:k]) + 1)), 0).sum()
+    idcg = (1 / np.log2(1 + np.arange(1, min(len(y_rec[:k]), len(y_rel)) + 1))).sum()
+
+    return dcg / idcg if idcg else 0
 
 
 def user_rr(y_rel: List[Any], y_rec: List[Any], k: int = 10) -> float:
@@ -60,4 +63,8 @@ def user_rr(y_rel: List[Any], y_rec: List[Any], k: int = 10) -> float:
     :param k: number of top recommended items
     :return: reciprocal rank for user recommendations
     """
-    return ...
+    first_relevant_rank = np.where(np.isin(y_rec[:k], y_rel))[0]
+    if len(first_relevant_rank) != 0:
+        return 1 / (first_relevant_rank[0] + 1)
+    else:
+        return 0
