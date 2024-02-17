@@ -1,5 +1,3 @@
-from typing import Union
-
 import numpy
 from scipy import sparse
 from sklearn.base import BaseEstimator
@@ -25,10 +23,10 @@ class SimilarItemsContentRecommender(BaseEstimator):
         check_consistent_length(self.item_embeddings, self.item_ids)
 
         distance_metric = check_scalar(self.distance_metric,
-                                       name='item-item nearest neighbour model`s type (implicit parameter)',
+                                       name='distance metric',
                                        target_type=str)
         if distance_metric not in PAIRED_DISTANCES:
-            raise ValueError(distance_metric)
+            raise KeyError(distance_metric)
 
         self.similarities = pairwise_distances(self.item_embeddings, metric=distance_metric)
 

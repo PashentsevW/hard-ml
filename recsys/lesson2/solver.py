@@ -1,99 +1,21 @@
 import argparse
-import pathlib
 import logging
 from datetime import datetime
 
 import boto3
 import numpy
 import pandas
-from sklearn.compose import make_column_transformer
-from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.impute import SimpleImputer
-from sklearn.model_selection import GridSearchCV, PredefinedSplit
+from sklearn.model_selection import PredefinedSplit
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import Normalizer
 
 from utils.io.s3 import download_dataframe, upload_dataframe
-from utils.recommenders.content import (PopularItemsContentRecommender,
-                                        RandomItemsContentRecommender,
-                                        SimilarItemsContentRecommender)
+from utils.text.models import pretrained_models
+from utils.text.models.loader import GensimModelLoader
 from utils.validation.metrics import hitrate_score
 
-s3_bucket = 'cloud-pashentsevw-default'
-s3_folder = pathlib.Path('hardml/recsys/lesson2/')
-
-random_state = 94
-
-data_path = s3_folder
-submission_path = s3_folder / 'submissions'
-
-title_id_column = 'title_id'
-recs_column = 'recs'
-relevant_titles_column = 'relevant_titles'
-
-at_k = 10
-
-pipelines = {
-    'random': Pipeline([('recommender', RandomItemsContentRecommender(random_state))]),
-    'popular': Pipeline([('popularity_transformer',
-                           make_column_transformer((SimpleImputer(strategy='constant', fill_value=-1),
-                                                    ['rating_value']),
-                                                   remainder='drop')),
-                          ('recommender', PopularItemsContentRecommender())]),
-    'keywords': Pipeline([
-        ('keywords_vectorize',
-         make_column_transformer((CountVectorizer(lowercase=False,
-                                                  tokenizer=lambda keywords: keywords,
-                                                  token_pattern=None),
-                                  'keywords'),
-                                 remainder='drop')),
-        ('normalizer', Normalizer()),
-        ('recommender', SimilarItemsContentRecommender())]),
-    'similarity': Pipeline([
-        ('keywords_vectorize',
-         make_column_transformer((CountVectorizer(lowercase=False,
-                                                  tokenizer=lambda keywords: keywords,
-                                                  token_pattern=None),
-                                  'keywords'),
-                                 (CountVectorizer(lowercase=False,
-                                                  tokenizer=lambda stars: stars,
-                                                  token_pattern=None),
-                                  'stars'),
-                                 (CountVectorizer(lowercase=False,
-                                                  tokenizer=lambda directors: directors,
-                                                  token_pattern=None),
-                                  'directors'),
-                                 (CountVectorizer(lowercase=False,
-                                                  tokenizer=lambda creators: creators,
-                                                  token_pattern=None),
-                                  'creators'),
-                                 (CountVectorizer(lowercase=False,
-                                                  tokenizer=lambda genre: genre if isinstance(genre, numpy.ndarray) else [],
-                                                  token_pattern=None),
-                                  'genre'),
-                                 remainder='drop')),
-        ('normalizer', Normalizer()),
-        ('recommender', SimilarItemsContentRecommender())])
-}
-
-
-def score_wrapper(estimator, X, y) -> float:
-    if isinstance(estimator, Pipeline):
-        y_pred = estimator[-1].predict(X[title_id_column].to_numpy().reshape(-1, 1), k=at_k)
-        return hitrate_score(y, y_pred, at_k)
-    else:
-        raise ValueError(estimator)
-
-
-searchers = {
-    'similarity': (
-        GridSearchCV,
-        {'param_grid': { 'recommender__distance_metric': ['cosine', 'l1', 'l2', 'euclidean']},
-         'scoring': score_wrapper,
-         'refit': False,
-         'verbose': 4})
-}
-
+import columns
+import constants
+from config import pipelines, searchers
 
 def fit_pipeline(train_df: pandas.DataFrame,
                  valid_df: pandas.DataFrame,
@@ -104,13 +26,13 @@ def fit_pipeline(train_df: pandas.DataFrame,
         logging.info('Prepare searcher for "%s"', pipeline_id)
         
         X = pandas.concat([train_df,
-                           valid_df[[title_id_column]].merge(train_df, on=title_id_column)],
+                           valid_df[[columns.TITLE_ID_COLUMN]].merge(train_df, on=columns.TITLE_ID_COLUMN)],
                           ignore_index=True)
         
         logging.info('Got X, with shape %s', X.shape)
 
-        y = pandas.concat([train_df.loc[:, title_id_column],
-                           valid_df.loc[:, relevant_titles_column].apply(lambda titles: titles.tolist())],
+        y = pandas.concat([train_df.loc[:, columns.TITLE_ID_COLUMN],
+                           valid_df.loc[:, columns.RELEVANT_TITLES_COLUMN].apply(lambda titles: titles.tolist())],
                           ignore_index=True)
         y = y.to_numpy(dtype=numpy.object_)
 
@@ -132,7 +54,8 @@ def fit_pipeline(train_df: pandas.DataFrame,
         else:
             raise ValueError('best_params_ not supported')
     
-    return pipeline.fit(train_df, train_df[title_id_column].to_numpy())
+    return pipeline.fit(train_df, train_df[columns.TITLE_ID_COLUMN].to_numpy())
+
 
 if __name__ == '__main__':
     run_dt = datetime.now()
@@ -159,13 +82,19 @@ if __name__ == '__main__':
     s3_session = boto3.session.Session()
     s3_client = s3_session.client(service_name='s3', endpoint_url='https://storage.yandexcloud.net')
 
+    logging.info('Download word models')
+
+    pretrained_models.register('glove-wiki-gigaword-50', GensimModelLoader(), 50)
+
+    logging.info('Downloaded %d models', len(pretrained_models))
+
     logging.info('Download data')
 
-    train_df = download_dataframe(s3_client, s3_bucket, data_path / 'imdb_movies.parquet')
+    train_df = download_dataframe(s3_client, constants.S3_BUCKET, constants.DATA_PATH / 'imdb_movies.parquet')
 
     logging.info('Downloaded train data, with shape %s', train_df.shape)
     
-    test_df = download_dataframe(s3_client, s3_bucket, data_path / 'relevant_titles_subsample.parquet')
+    test_df = download_dataframe(s3_client, constants.S3_BUCKET, constants.DATA_PATH / 'relevant_titles_subsample.parquet')
 
     logging.info('Downloaded test data, with shape %s', test_df.shape)
 
@@ -177,35 +106,35 @@ if __name__ == '__main__':
 
     logging.info('Eval pipeline "%s"', args.pipeline)
 
-    y_true = (test_df[relevant_titles_column]
+    y_true = (test_df[columns.RELEVANT_TITLES_COLUMN]
               .apply(lambda items: items.tolist())
               .to_numpy(dtype=numpy.object_))
-    y_pred = pipeline[-1].predict(test_df[title_id_column].to_numpy().reshape(-1, 1), k=at_k)
+    y_pred = pipeline[-1].predict(test_df[columns.TITLE_ID_COLUMN].to_numpy().reshape(-1, 1), k=constants.AT_K)
 
-    logging.info('Metric: %f', hitrate_score(y_true, y_pred, at_k))
+    logging.info('Metric: %f', hitrate_score(y_true, y_pred, constants.AT_K))
 
     logging.info('Save recommendations')
 
-    y_pred = pipeline[-1].predict(train_df[title_id_column].to_numpy().reshape(-1, 1), k=at_k)
+    y_pred = pipeline[-1].predict(train_df[columns.TITLE_ID_COLUMN].to_numpy().reshape(-1, 1), k=constants.AT_K)
 
-    submission_df = train_df.loc[:, [title_id_column]]
+    submission_df = train_df.loc[:, [columns.TITLE_ID_COLUMN]]
 
     if y_pred.ndim == 1:
-        submission_df.loc[:, recs_column] = (
+        submission_df.loc[:, columns.RECS_COLUMN] = (
             pandas.Series(y_pred, index=submission_df.index)
             .apply(lambda row: numpy.array(row).flatten().tolist())
         )
     else:
-        submission_df.loc[:, recs_column] = (
+        submission_df.loc[:, columns.RECS_COLUMN] = (
             pandas.DataFrame(y_pred, index=submission_df.index)
             .apply(lambda row: numpy.array(row).flatten().tolist(), axis=1)
         )
 
     logging.info('Got submissions data, with shape %s', submission_df.shape)
 
-    file_path = submission_path / args.pipeline / f'{run_dt.strftime("%Y%m%dT%H%M%S")}.parquet'
+    file_path = constants.SUBMISSION_PATH / args.pipeline / f'{run_dt.strftime("%Y%m%dT%H%M%S")}.parquet'
 
-    upload_dataframe(submission_df, s3_client, s3_bucket, file_path)
+    upload_dataframe(submission_df, s3_client, constants.S3_BUCKET, file_path)
 
     logging.info('Recommendations saved to %s', file_path)
     logging.info('Done!')
