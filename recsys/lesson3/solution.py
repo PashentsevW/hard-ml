@@ -40,7 +40,13 @@ def user_ap(y_rel: List[Any], y_rec: List[Any], k: int = 10) -> float:
     :param k: number of top recommended items
     :return: average precision metric for user recommendations
     """
-    return ...
+    K = min(len(y_rec[:k]), k)
+
+    prs = np.array([user_precision(y_rel, y_rec, ki) for ki in np.arange(1, K + 1)])
+    rcs = np.zeros_like(prs, dtype=np.float_)
+    rcs[np.isin(y_rec[:K], y_rel)] = 1
+
+    return (prs * rcs).sum() / k if k else 0
 
 
 def user_ndcg(y_rel: List[Any], y_rec: List[Any], k: int = 10) -> float:
