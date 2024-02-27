@@ -25,7 +25,7 @@ class Mapping:
     def generate_mapping(source_ids: Sequence[str]) -> 'Mapping':
         id2code = {}
         code2id = {}
-        for ind, id_ in enumerate(source_ids):
+        for ind, id_ in enumerate(set(source_ids)):
             id2code[id_] = ind
             code2id[ind] = id_
         
