@@ -1,5 +1,9 @@
-# TODO Add pipeline for baseline recommenders
+from sklearn.pipeline import Pipeline
 
-pipelines = {}
+from utils.recommenders.colab import PopularItemsColabRecommender
+
+pipelines = {
+    'baseline': Pipeline([('recommender', PopularItemsColabRecommender())]),
+}
 
 searchers = {}
