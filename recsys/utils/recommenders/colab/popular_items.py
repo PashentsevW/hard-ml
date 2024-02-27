@@ -17,7 +17,8 @@ class PopularItemsColabRecommender(BaseEstimator):
         self.popular_items = (user_item_df
                               .groupby('item_id')['user_id'].count()
                               .sort_values(ascending=False)
-                              .index.to_numpy())
+                              .index
+                              .to_numpy())
         
         self.user_history = (user_item_df
                              .groupby('user_id')['item_id']
@@ -30,8 +31,12 @@ class PopularItemsColabRecommender(BaseEstimator):
     def predict(self, X: numpy.ndarray, k: int) -> numpy.ndarray:
         check_is_fitted(self, 'is_fitted_')
 
-        X = check_array(X, dtype=None)
-        user_item_df = pandas.DataFrame(X, columns=['user_id', 'item_id'])
+        X = check_array(X, dtype=None, ensure_2d=False)
+
+        if X.ndim == 1:
+            user_ids = numpy.unique(X)
+        else:
+            user_ids = numpy.unique(X[:, 0])
     
         k = check_scalar(k,
                          name='output recommendations count',
@@ -40,11 +45,14 @@ class PopularItemsColabRecommender(BaseEstimator):
                          max_val=len(self.popular_items))
 
         preds = []
-        for user_id in user_item_df.loc[:, 'user_id']:
+        for user_id in user_ids:
             if user_id not in self.user_history:
-                continue
+                preds.append([])
 
-            preds.append(self.popular_items[~numpy.isin(self.user_history[user_id], self.popular_items)][:k])
+            y_rec = self.popular_items[:k + len(self.user_history[user_id])]
+            y_rec = y_rec[~numpy.isin(y_rec, self.user_history[user_id])][:k]
+
+            preds.append(y_rec)
 
         return numpy.array(preds, dtype=numpy.object_)
 

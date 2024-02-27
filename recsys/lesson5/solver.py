@@ -12,7 +12,7 @@ from sklearn.pipeline import Pipeline
 
 import columns
 import constants
-from config import pipelines, searchers
+from config import pipelines, score_wrapper, searchers
 from utils.io.s3 import download_dataframe, upload_dataframe
 
 
@@ -38,8 +38,12 @@ def preprocess_dataset(
     users_mapping = Mapping.generate_mapping(dataset_df[columns.USER_ID_COLUMN].to_numpy())
     artists_mapping = Mapping.generate_mapping(dataset_df[columns.ARTIST_ID_COLUMN].to_numpy())
 
-    dataset_df.loc[:, columns.USER_ID_COLUMN] = dataset_df[columns.USER_ID_COLUMN].map(users_mapping)
-    dataset_df.loc[:, columns.ARTIST_ID_COLUMN] = dataset_df[columns.ARTIST_ID_COLUMN].map(artists_mapping)
+    dataset_df.loc[:, columns.USER_ID_COLUMN] = (
+        dataset_df[columns.USER_ID_COLUMN].map(users_mapping.id2code)
+    )
+    dataset_df.loc[:, columns.ARTIST_ID_COLUMN] = (
+        dataset_df[columns.ARTIST_ID_COLUMN].map(artists_mapping.id2code)
+    )
 
     return dataset_df, users_mapping, artists_mapping
 
@@ -61,11 +65,11 @@ def fit_and_eval(dataset_df: pandas.DataFrame,
         
     X = dataset_df.loc[:, [columns.USER_ID_COLUMN, columns.ARTIST_ID_COLUMN]].to_numpy()
 
-    logging.info('Got X, with shape %s', X.shape)
+    logging.info('Got X with shape %s', X.shape)
 
     cv = get_cv(dataset_df)
 
-    logging.info('Got cv %s', cv)
+    logging.info('Got cv: %s', cv)
 
     if pipeline_id in searchers:
         logging.info('Prepare searcher for "%s"', pipeline_id)
@@ -82,9 +86,45 @@ def fit_and_eval(dataset_df: pandas.DataFrame,
         else:
             raise ValueError('best_params_ not supported')
     else:
-        logging.info('Got score: %s', cross_val_score(pipeline, X, scoring=..., cv=cv)[0])
+        logging.info('Got score: %s',
+                     cross_val_score(pipeline, X, scoring=score_wrapper, cv=cv, verbose=4)[0])
     
     return pipeline.fit(X)
+
+
+def prepare_data_for_submit(pipeline: Pipeline,
+                            dataset_df: pandas.DataFrame,
+                            users_mapping: Mapping,
+                            artists_mapping: Mapping) -> pandas.DataFrame:
+    users = dataset_df[columns.USER_ID_COLUMN].unique()
+    items = pipeline.predict(users, k=constants.AT_K)
+
+    submission_df = pandas.DataFrame({
+        columns.USER_ID_COLUMN: users
+    })
+
+    if items.ndim == 1:
+        submission_df.loc[:, columns.Y_REC_COLUMN] = (
+            pandas.Series(items, index=submission_df.index)
+            .apply(lambda row: numpy.array(row).flatten().tolist())
+        )
+    else:
+        submission_df.loc[:, columns.Y_REC_COLUMN] = (
+            pandas.DataFrame(items, index=submission_df.index)
+            .apply(lambda row: numpy.array(row).flatten().tolist(), axis=1)
+        )
+
+    submission_df = submission_df.explode(columns.Y_REC_COLUMN)
+    submission_df.loc[:, columns.USER_ID_COLUMN] = (
+        submission_df[columns.USER_ID_COLUMN].map(users_mapping.code2id)
+    )
+    submission_df.loc[:, columns.Y_REC_COLUMN] = (
+        submission_df[columns.Y_REC_COLUMN].map(artists_mapping.code2id)
+    )
+
+    return (submission_df
+            .groupby(columns.USER_ID_COLUMN, as_index=False)
+            .agg({columns.Y_REC_COLUMN: lambda items: items.to_list()}))
 
 
 if __name__ == '__main__':
@@ -128,13 +168,17 @@ if __name__ == '__main__':
 
     pipeline = fit_and_eval(dataset_df, args.pipeline)
 
-    logging.info('Given fitted pipeline:\n%s', pipeline)
+    logging.info('Got fitted pipeline:\n%s', pipeline)
 
     file_path = constants.SUBMISSION_PATH / args.pipeline / f'{run_dt.strftime("%Y%m%dT%H%M%S")}.parquet'
 
-    # TODO Add code for submit (transform indexes from int to UUID)
+    submission_df = prepare_data_for_submit(pipeline, dataset_df, users_mapping, artists_mapping)
 
-    # upload_dataframe(submission_df, s3_client, constants.S3_BUCKET, file_path)
+    logging.info('Got submission with shape %s and columns %s', 
+                 submission_df.shape,
+                 submission_df.columns)
+
+    upload_dataframe(submission_df, s3_client, constants.S3_BUCKET, file_path)
 
     logging.info('Recommendations saved to %s', file_path)
     logging.info('Done!')
