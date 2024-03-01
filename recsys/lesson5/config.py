@@ -7,11 +7,15 @@ from sklearn.pipeline import Pipeline
 
 import columns
 import constants
-from utils.recommenders.colab import PopularItemsColabRecommender
+from utils.recommenders.colab import (PopularItemsColabRecommender,
+                                      PureSVDColabRecommender,)
 from utils.validation.metrics import ndcg_score
 
 pipelines = {
     'baseline': Pipeline([('recommender', PopularItemsColabRecommender())]),
+    'pure_svd': Pipeline([('recommender',
+                           PureSVDColabRecommender(n_components=0,
+                                                   random_state=constants.RANDOM_STATE))]),
 }
 
 
@@ -36,10 +40,12 @@ def score_wrapper(estimator: Pipeline, X: numpy.ndarray, y = None) -> float:
 
 
 searchers = {
-    'experiment': (
+    'pure_svd': (
         GridSearchCV,
         {
-            'param_grid': {},
+            'param_grid': {
+                'recommender__n_components': [5, 10, 20, 50]
+            },
             'scoring': score_wrapper,
             'refit': False,
             'verbose': 4,
