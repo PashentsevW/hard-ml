@@ -2,6 +2,8 @@ import logging
 
 import numpy
 import pandas
+from optuna.distributions import IntDistribution
+from optuna.integration import OptunaSearchCV
 from sklearn.model_selection import GridSearchCV
 from sklearn.pipeline import Pipeline
 
@@ -42,16 +44,30 @@ def score_wrapper(estimator: Pipeline, X: numpy.ndarray, y = None) -> float:
 
 
 searchers = {
+    # 'pure_svd': (
+    #     GridSearchCV,
+    #     {
+    #         'param_grid': {
+    #             'recommender__n_components': [5, 10, 20, 50]
+    #         },
+    #         'scoring': score_wrapper,
+    #         'refit': False,
+    #         'verbose': 4,
+    #         'error_score': 'raise'
+    #     }
+    # ),
     'pure_svd': (
-        GridSearchCV,
+        OptunaSearchCV,
         {
-            'param_grid': {
-                'recommender__n_components': [5, 10, 20, 50]
+            'param_distributions': {
+                'recommender__n_components': IntDistribution(low=2, high=50),
             },
+            'n_trials': 5,
             'scoring': score_wrapper,
             'refit': False,
             'verbose': 4,
+            'random_state': constants.RANDOM_STATE,
             'error_score': 'raise'
         }
-    )
+    ),
 }
