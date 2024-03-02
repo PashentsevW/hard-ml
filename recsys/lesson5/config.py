@@ -21,6 +21,8 @@ pipelines = {
 
 def score_wrapper(estimator: Pipeline, X: numpy.ndarray, y = None) -> float:
     if isinstance(estimator, Pipeline):
+        logging.info('Evaluate')
+
         y_true = (
             pandas.DataFrame(X, columns=[columns.USER_ID_COLUMN, columns.ARTIST_ID_COLUMN])
             .groupby(columns.USER_ID_COLUMN)[columns.ARTIST_ID_COLUMN]

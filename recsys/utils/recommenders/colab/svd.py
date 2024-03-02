@@ -1,5 +1,6 @@
 import logging
 
+import faiss
 import numpy
 import pandas
 from scipy.sparse import coo_matrix, csr_matrix
@@ -47,6 +48,11 @@ class PureSVDColabRecommender(BaseEstimator):
         logging.info('Got user embeddings %s and item embeddings %s',
                      self.user_embeddings.shape,
                      self.item_embeddings.shape)
+
+        self.index = faiss.IndexFlatIP(self.item_embeddings.shape[1])
+        self.index.add(self.item_embeddings)
+
+        logging.info('Builded search index')
         
         self.user_history = (user_item_df
                              .groupby('user_id')['item_id']
@@ -56,7 +62,7 @@ class PureSVDColabRecommender(BaseEstimator):
         self.is_fitted_ = True
         return self
 
-    def predict(self, X: numpy.ndarray, k: int) -> numpy.ndarray:
+    def predict(self, X: numpy.ndarray, k: int, progress_bar: bool = True) -> numpy.ndarray:
         check_is_fitted(self, 'is_fitted_')
 
         X = check_array(X, dtype=None, ensure_2d=False)
@@ -72,16 +78,18 @@ class PureSVDColabRecommender(BaseEstimator):
                          min_val=1,
                          max_val=self.item_embeddings.shape[0])
 
-        logging.info('Get top%d items for %d users:', k, len(user_ids))
+        if progress_bar:
+            logging.info('Get top%d items for %d users:', k, len(user_ids))
+            
+            user_ids = tqdm(user_ids)
 
         preds = []
-        for user_id in tqdm(user_ids):
+        for user_id in user_ids:
             if user_id not in self.user_history:
                 preds.append([])
 
-            similarities = self.user_embeddings[user_id, :] @ self.item_embeddings.T
-
-            y_rec = similarities.argsort()[::-1][:k + len(self.user_history[user_id])]
+            _, y_rec = self.index.search(self.user_embeddings[user_id, :].reshape(1, -1),
+                                         k=k+len(self.user_history[user_id]))
             y_rec = y_rec[~numpy.isin(y_rec, self.user_history[user_id])][:k]
 
             preds.append(y_rec)
