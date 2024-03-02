@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 
 import faiss
 import numpy
@@ -10,6 +11,7 @@ from sklearn.utils.validation import (check_array,
                                       check_is_fitted,
                                       check_random_state,
                                       check_scalar,)
+from surprise import AlgoBase, Dataset, Prediction, Reader, SVD
 from tqdm import tqdm
 
 
@@ -80,7 +82,7 @@ class PureSVDColabRecommender(BaseEstimator):
 
         if progress_bar:
             logging.info('Get top%d items for %d users:', k, len(user_ids))
-            
+
             user_ids = tqdm(user_ids)
 
         preds = []
@@ -93,5 +95,125 @@ class PureSVDColabRecommender(BaseEstimator):
             y_rec = y_rec[~numpy.isin(y_rec, self.user_history[user_id])][:k]
 
             preds.append(y_rec)
+
+        return numpy.array(preds, dtype=numpy.object_)
+
+
+class FunkSVDColabRecommender(BaseEstimator):
+    def __init__(self,
+                 n_factors: int =100,
+                 n_epochs: int = 20,
+                 biased: bool = True,
+                 init_mean: float = 0,
+                 init_std_dev: float = 0.1,
+                 lr_all: float = 0.005,
+                 reg_all: float = 0.02,
+                 lr_bu: Optional[float] = None,
+                 lr_bi: Optional[float] = None,
+                 lr_pu: Optional[float] = None,
+                 lr_qi: Optional[float] = None,
+                 reg_bu: Optional[float] = None,
+                 reg_bi: Optional[float] = None,
+                 reg_pu: Optional[float] = None,
+                 reg_qi: Optional[float] = None,
+                 verbose: bool = False,
+                 random_state: Optional[int] = None) -> None:
+        super().__init__()
+        self.n_factors = n_factors
+        self.n_epochs = n_epochs
+        self.biased = biased
+        self.init_mean = init_mean
+        self.init_std_dev = init_std_dev
+        self.lr_all = lr_all
+        self.reg_all = reg_all
+        self.lr_bu = lr_bu
+        self.lr_bi = lr_bi
+        self.lr_pu = lr_pu
+        self.lr_qi = lr_qi
+        self.reg_bu = reg_bu
+        self.reg_bi = reg_bi
+        self.reg_pu = reg_pu
+        self.reg_qi = reg_qi
+        self.verbose = verbose
+        self.random_state = random_state
+
+    def fit(self, X: numpy.ndarray, y = None) -> 'FunkSVDColabRecommender':
+        X = check_array(X)
+        user_item_df = pandas.DataFrame(X, columns=['user_id', 'item_id'])
+        user_item_df['rating'] = 1.
+
+        model_params = {
+            'n_factors': check_scalar(self.n_factors, name='n_factors', target_type=int, min_val=1),
+            'n_epochs': check_scalar(self.n_epochs, name='n_epochs', target_type=int, min_val=1),
+            'biased': check_scalar(self.biased, name='biased', target_type=bool),
+            'init_mean': check_scalar(self.init_mean, name='init_mean', target_type=(int, float), min_val=0),
+            'init_std_dev': check_scalar(self.init_std_dev, name='init_std_dev', target_type=(int, float), min_val=0),
+            'lr_all': check_scalar(self.lr_all, name='lr_all', target_type=float, min_val=1e-9),
+            'reg_all': check_scalar(self.reg_all, name='reg_all', target_type=(int, float), min_val=1e-9),
+            'lr_bu': (check_scalar(self.lr_bu, name='lr_bu', target_type=float, min_val=1e-9)
+                      if self.lr_bu else None),
+            'lr_bi': (check_scalar(self.lr_bi, name='lr_bi', target_type=float, min_val=1e-9)
+                      if self.lr_bi else None),
+            'lr_pu': (check_scalar(self.lr_pu, name='lr_pu', target_type=float, min_val=1e-9)
+                      if self.lr_pu else None),
+            'lr_qi': (check_scalar(self.lr_qi, name='lr_qi', target_type=float, min_val=1e-9)
+                      if self.lr_qi else None),
+            'reg_bu': (check_scalar(self.reg_bu, name='reg_bu', target_type=(int, float), min_val=1e-9)
+                       if self.reg_bu else None),
+            'reg_bi': (check_scalar(self.reg_bi, name='reg_bi', target_type=(int, float), min_val=1e-9)
+                       if self.reg_bi else None),
+            'reg_pu': (check_scalar(self.reg_pu, name='reg_pu', target_type=(int, float), min_val=1e-9)
+                       if self.reg_pu else None),
+            'reg_qi': (check_scalar(self.reg_qi, name='reg_qi', target_type=(int, float), min_val=1e-9)
+                       if self.reg_qi else None),
+            'verbose': check_scalar(self.verbose, name='verbose', target_type=bool),
+            'random_state': check_random_state(self.random_state),
+        }
+
+        dataset = Dataset.load_from_df(user_item_df, Reader()).build_full_trainset()
+
+        algo: AlgoBase = SVD(**model_params)
+        algo.fit(dataset)
+
+        logging.info('Get recommendations')
+
+        predictions = algo.test(dataset.build_anti_testset(), model_params['verbose'])
+
+        logging.info('Got %d predictions', len(predictions))
+
+        self.recommendations = (
+            pandas.DataFrame
+            .from_records(predictions, columns=Prediction._fields)
+            .sort_values(['uid', 'est'], ascending=[True, False])
+            .groupby('uid')['iid']
+            .agg(lambda items: items.to_list())
+            .to_dict()
+        )
+        
+        logging.info('Got recommendations for %d users', len(self.recommendations))
+
+        self.is_fitted_ = True
+        return self
+
+    def predict(self, X: numpy.ndarray, k: int, progress_bar: bool = True) -> numpy.ndarray:
+        check_is_fitted(self, 'is_fitted_')
+
+        X = check_array(X, dtype=None, ensure_2d=False)
+
+        if X.ndim == 1:
+            user_ids = numpy.unique(X)
+        else:
+            user_ids = numpy.unique(X[:, 0])
+    
+        k = check_scalar(k, name='output recommendations count', target_type=int, min_val=1)
+
+        if progress_bar:
+            logging.info('Get top%d items for %d users:', k, len(user_ids))
+            
+            user_ids = tqdm(user_ids)
+
+        preds = []
+        for user_id in user_ids:
+            preds.append(self.recommendations.get(user_id, [])[:k])
 
         return numpy.array(preds, dtype=numpy.object_)

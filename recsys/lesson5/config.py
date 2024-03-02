@@ -9,15 +9,21 @@ from sklearn.pipeline import Pipeline
 
 import columns
 import constants
-from utils.recommenders.colab import (PopularItemsColabRecommender,
+from utils.recommenders.colab import (FunkSVDColabRecommender,
+                                      PopularItemsColabRecommender, 
                                       PureSVDColabRecommender,)
 from utils.validation.metrics import ndcg_score
 
 pipelines = {
     'baseline': Pipeline([('recommender', PopularItemsColabRecommender())]),
     'pure_svd': Pipeline([('recommender',
-                           PureSVDColabRecommender(n_components=0,
+                           PureSVDColabRecommender(n_components=5,
                                                    random_state=constants.RANDOM_STATE))]),
+    'funk_svd': Pipeline([('recommender',
+                           FunkSVDColabRecommender(n_factors=5,
+                                                   n_epochs=1,
+                                                   random_state=constants.RANDOM_STATE,
+                                                   verbose=False))]),
 }
 
 
@@ -44,18 +50,6 @@ def score_wrapper(estimator: Pipeline, X: numpy.ndarray, y = None) -> float:
 
 
 searchers = {
-    # 'pure_svd': (
-    #     GridSearchCV,
-    #     {
-    #         'param_grid': {
-    #             'recommender__n_components': [5, 10, 20, 50]
-    #         },
-    #         'scoring': score_wrapper,
-    #         'refit': False,
-    #         'verbose': 4,
-    #         'error_score': 'raise'
-    #     }
-    # ),
     'pure_svd': (
         OptunaSearchCV,
         {
