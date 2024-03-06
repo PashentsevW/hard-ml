@@ -101,9 +101,8 @@ class PureSVDColabRecommender(BaseEstimator):
 
 class FunkSVDColabRecommender(BaseEstimator):
     def __init__(self,
-                 n_factors: int =100,
+                 n_factors: int = 100,
                  n_epochs: int = 20,
-                 biased: bool = True,
                  init_mean: float = 0,
                  init_std_dev: float = 0.1,
                  lr_all: float = 0.005,
@@ -121,7 +120,6 @@ class FunkSVDColabRecommender(BaseEstimator):
         super().__init__()
         self.n_factors = n_factors
         self.n_epochs = n_epochs
-        self.biased = biased
         self.init_mean = init_mean
         self.init_std_dev = init_std_dev
         self.lr_all = lr_all
@@ -140,12 +138,12 @@ class FunkSVDColabRecommender(BaseEstimator):
     def fit(self, X: numpy.ndarray, y = None) -> 'FunkSVDColabRecommender':
         X = check_array(X)
         user_item_df = pandas.DataFrame(X, columns=['user_id', 'item_id'])
-        user_item_df['rating'] = 1.
+        user_item_df['rating'] = 5.
 
         model_params = {
             'n_factors': check_scalar(self.n_factors, name='n_factors', target_type=int, min_val=1),
             'n_epochs': check_scalar(self.n_epochs, name='n_epochs', target_type=int, min_val=1),
-            'biased': check_scalar(self.biased, name='biased', target_type=bool),
+            'biased': False,
             'init_mean': check_scalar(self.init_mean, name='init_mean', target_type=(int, float), min_val=0),
             'init_std_dev': check_scalar(self.init_std_dev, name='init_std_dev', target_type=(int, float), min_val=0),
             'lr_all': check_scalar(self.lr_all, name='lr_all', target_type=float, min_val=1e-9),
@@ -175,22 +173,31 @@ class FunkSVDColabRecommender(BaseEstimator):
         algo: AlgoBase = SVD(**model_params)
         algo.fit(dataset)
 
-        logging.info('Get recommendations')
+        self.dataset = dataset
+        self.user_embeddings: numpy.ndarray = algo.pu
+        self.item_embeddings: numpy.ndarray = algo.qi
 
-        predictions = algo.test(dataset.build_anti_testset(), model_params['verbose'])
+        logging.info('Got user embeddings %s and item embeddings %s',
+                     self.user_embeddings.shape,
+                     self.item_embeddings.shape)
 
-        logging.info('Got %d predictions', len(predictions))
+        if model_params.get('biased'):
+            self.user_bias: numpy.ndarray = algo.bu
+            self.item_bias: numpy.ndarray = algo.bi
 
-        self.recommendations = (
-            pandas.DataFrame
-            .from_records(predictions, columns=Prediction._fields)
-            .sort_values(['uid', 'est'], ascending=[True, False])
-            .groupby('uid')['iid']
-            .agg(lambda items: items.to_list())
-            .to_dict()
-        )
+            logging.info('Got user biases %s and item biases %s',
+                         self.user_bias.shape,
+                         self.item_bias.shape)
+
+        self.index = faiss.IndexFlatIP(self.item_embeddings.shape[1])
+        self.index.add(self.item_embeddings)
+
+        logging.info('Builded search index')
         
-        logging.info('Got recommendations for %d users', len(self.recommendations))
+        self.user_history = (user_item_df
+                             .groupby('user_id')['item_id']
+                             .agg(lambda items: items.to_list())
+                             .to_dict())
 
         self.is_fitted_ = True
         return self
@@ -214,6 +221,17 @@ class FunkSVDColabRecommender(BaseEstimator):
 
         preds = []
         for user_id in user_ids:
-            preds.append(self.recommendations.get(user_id, [])[:k])
+            if user_id not in self.user_history:
+                preds.append([])
+
+            uid = self.dataset.to_inner_uid(user_id)
+
+            _, y_rec = self.index.search(self.user_embeddings[uid, :].reshape(1, -1),
+                                         k=k+len(self.user_history[user_id]))
+            y_rec = y_rec[~numpy.isin(y_rec, self.user_history[user_id])][:k]
+
+            y_rec = [self.dataset.to_raw_iid(yi) for yi in y_rec]
+
+            preds.append(y_rec)
 
         return numpy.array(preds, dtype=numpy.object_)

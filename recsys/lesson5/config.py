@@ -2,7 +2,7 @@ import logging
 
 import numpy
 import pandas
-from optuna.distributions import IntDistribution
+from optuna.distributions import IntDistribution, FloatDistribution
 from optuna.integration import OptunaSearchCV
 from sklearn.model_selection import GridSearchCV
 from sklearn.pipeline import Pipeline
@@ -57,6 +57,23 @@ searchers = {
                 'recommender__n_components': IntDistribution(low=2, high=50),
             },
             'n_trials': 5,
+            'scoring': score_wrapper,
+            'refit': False,
+            'verbose': 4,
+            'random_state': constants.RANDOM_STATE,
+            'error_score': 'raise'
+        }
+    ),
+    'funk_svd': (
+        OptunaSearchCV,
+        {
+            'param_distributions': {
+                'recommender__n_factors': IntDistribution(low=2, high=200),
+                'recommender__n_epochs': IntDistribution(low=1, high=50),
+                'recommender__lr_all': FloatDistribution(low=0.001, high=0.01),
+                'recommender__reg_all': FloatDistribution(low=0.001, high=10.),
+            },
+            'n_trials': 50,
             'scoring': score_wrapper,
             'refit': False,
             'verbose': 4,
