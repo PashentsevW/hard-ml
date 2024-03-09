@@ -11,7 +11,8 @@ import constants
 from utils.recommenders.colab import (FunkSVDColabRecommender,
                                       LightFMColabRecommender,
                                       PopularItemsColabRecommender, 
-                                      PureSVDColabRecommender,)
+                                      PureSVDColabRecommender,
+                                      Word2VecColabRecommender,)
 from utils.validation.metrics import ndcg_score
 
 pipelines = {
@@ -29,6 +30,10 @@ pipelines = {
                                                       num_threads=10,
                                                       verbose=True,
                                                       random_state=constants.RANDOM_STATE))]),
+    'w2v': Pipeline([('recommender',
+                      Word2VecColabRecommender(epochs=10,
+                                               workers=5,
+                                               seed=constants.RANDOM_STATE))]),
 }
 
 
@@ -95,6 +100,26 @@ searchers = {
                 'recommender__learning_rate': FloatDistribution(low=0.001, high=0.01),
                 'recommender__item_alpha': FloatDistribution(low=0.05, high=5),
                 'recommender__user_alpha': FloatDistribution(low=0.05, high=5),
+            },
+            'n_jobs': 16,
+            'n_trials': 50,
+            'scoring': score_wrapper,
+            'refit': False,
+            'verbose': 4,
+            'random_state': constants.RANDOM_STATE,
+            'error_score': 'raise'
+        }
+    ),
+    'w2v': (
+        OptunaSearchCV,
+        {
+            'param_distributions': {
+                'recommender__sg': CategoricalDistribution(choices=[0, 1]),
+                'recommender__window': IntDistribution(low=1, high=10),
+                'recommender__ns_exponent': FloatDistribution(low=-3, high=3),
+                'recommender__negative': IntDistribution(low=3, high=20),
+                'recommender__min_count': IntDistribution(low=0, high=20),
+                'recommender__vector_size': CategoricalDistribution(choices=[16, 32, 64, 128]),
             },
             'n_jobs': 16,
             'n_trials': 2,
