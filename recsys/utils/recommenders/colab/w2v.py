@@ -82,13 +82,16 @@ class Word2VecColabRecommender(BaseEstimator):
                 preds.append([])
                 continue
 
-            y_rec = self.model.predict_output_word(self.user_history[user_id], k)
+            y_rec = self.model.predict_output_word(
+                self.user_history[user_id][-self.model.window:],
+                k + len(self.user_history[user_id])
+            )
 
             if y_rec is None:
                 preds.append([])
                 continue
 
-            y_rec = [item_id for item_id, _ in y_rec if item_id not in self.user_history]
+            y_rec = [item_id for item_id, _ in y_rec if item_id not in self.user_history][:k]
 
             preds.append(y_rec)
 
