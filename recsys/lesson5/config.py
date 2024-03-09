@@ -2,14 +2,14 @@ import logging
 
 import numpy
 import pandas
-from optuna.distributions import IntDistribution, FloatDistribution
+from optuna.distributions import CategoricalDistribution, IntDistribution, FloatDistribution
 from optuna.integration import OptunaSearchCV
-from sklearn.model_selection import GridSearchCV
 from sklearn.pipeline import Pipeline
 
 import columns
 import constants
 from utils.recommenders.colab import (FunkSVDColabRecommender,
+                                      LightFMColabRecommender,
                                       PopularItemsColabRecommender, 
                                       PureSVDColabRecommender,)
 from utils.validation.metrics import ndcg_score
@@ -24,6 +24,11 @@ pipelines = {
                                                    n_epochs=1,
                                                    random_state=constants.RANDOM_STATE,
                                                    verbose=False))]),
+    'als_lightfm': Pipeline([('recommender',
+                              LightFMColabRecommender(epochs=10,
+                                                      num_threads=10,
+                                                      verbose=True,
+                                                      random_state=constants.RANDOM_STATE))]),
 }
 
 
@@ -74,6 +79,25 @@ searchers = {
                 'recommender__reg_all': FloatDistribution(low=0.001, high=10.),
             },
             'n_trials': 50,
+            'scoring': score_wrapper,
+            'refit': False,
+            'verbose': 4,
+            'random_state': constants.RANDOM_STATE,
+            'error_score': 'raise'
+        }
+    ),
+    'als_lightfm': (
+        OptunaSearchCV,
+        {
+            'param_distributions': {
+                'recommender__no_components': IntDistribution(low=10, high=200),
+                'recommender__loss': CategoricalDistribution(choices=['logistic', 'bpr', 'warp']),
+                'recommender__learning_rate': FloatDistribution(low=0.001, high=0.01),
+                'recommender__item_alpha': FloatDistribution(low=0.05, high=5),
+                'recommender__user_alpha': FloatDistribution(low=0.05, high=5),
+            },
+            'n_jobs': 16,
+            'n_trials': 2,
             'scoring': score_wrapper,
             'refit': False,
             'verbose': 4,

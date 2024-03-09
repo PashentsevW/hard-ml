@@ -11,7 +11,7 @@ from sklearn.utils.validation import (check_array,
                                       check_is_fitted,
                                       check_random_state,
                                       check_scalar,)
-from surprise import AlgoBase, Dataset, Prediction, Reader, SVD
+from surprise import AlgoBase, Dataset, Reader, SVD
 from tqdm import tqdm
 
 
