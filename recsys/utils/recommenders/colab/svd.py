@@ -7,7 +7,8 @@ import pandas
 from scipy.sparse import coo_matrix, csr_matrix
 from scipy.sparse.linalg import svds
 from sklearn.base import BaseEstimator
-from sklearn.utils.validation import (check_array,
+from sklearn.utils.validation import (column_or_1d,
+                                      check_array,
                                       check_is_fitted,
                                       check_random_state,
                                       check_scalar,)
@@ -25,8 +26,8 @@ def _user_item_to_sparse(user_item_df: pandas.DataFrame) -> csr_matrix:
 
 class PureSVDColabRecommender(BaseEstimator):
     def __init__(self,
-                 n_components: int,
-                 random_state: int) -> None:
+                 n_components: int = 128,
+                 random_state: Optional[int] = None) -> None:
         super().__init__()
         self.n_components = n_components
         self.random_state = random_state
@@ -67,18 +68,8 @@ class PureSVDColabRecommender(BaseEstimator):
     def predict(self, X: numpy.ndarray, k: int, progress_bar: bool = True) -> numpy.ndarray:
         check_is_fitted(self, 'is_fitted_')
 
-        X = check_array(X, dtype=None, ensure_2d=False)
-
-        if X.ndim == 1:
-            user_ids = numpy.unique(X)
-        else:
-            user_ids = numpy.unique(X[:, 0])
-    
-        k = check_scalar(k,
-                         name='output recommendations count',
-                         target_type=int,
-                         min_val=1,
-                         max_val=self.item_embeddings.shape[0])
+        user_ids = column_or_1d(check_array(X, dtype=None, ensure_2d=False))    
+        k = check_scalar(k, name='k', target_type=int, min_val=1)
 
         if progress_bar:
             logging.info('Get top%d items for %d users:', k, len(user_ids))
@@ -205,14 +196,8 @@ class FunkSVDColabRecommender(BaseEstimator):
     def predict(self, X: numpy.ndarray, k: int, progress_bar: bool = True) -> numpy.ndarray:
         check_is_fitted(self, 'is_fitted_')
 
-        X = check_array(X, dtype=None, ensure_2d=False)
-
-        if X.ndim == 1:
-            user_ids = numpy.unique(X)
-        else:
-            user_ids = numpy.unique(X[:, 0])
-    
-        k = check_scalar(k, name='output recommendations count', target_type=int, min_val=1)
+        user_ids = column_or_1d(check_array(X, dtype=None, ensure_2d=False))    
+        k = check_scalar(k, name='k', target_type=int, min_val=1)
 
         if progress_bar:
             logging.info('Get top%d items for %d users:', k, len(user_ids))

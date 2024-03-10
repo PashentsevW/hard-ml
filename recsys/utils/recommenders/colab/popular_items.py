@@ -1,7 +1,8 @@
 import numpy
 import pandas
 from sklearn.base import BaseEstimator
-from sklearn.utils.validation import (check_array,
+from sklearn.utils.validation import (column_or_1d,
+                                      check_array,
                                       check_is_fitted,
                                       check_scalar,)
 
@@ -31,18 +32,8 @@ class PopularItemsColabRecommender(BaseEstimator):
     def predict(self, X: numpy.ndarray, k: int) -> numpy.ndarray:
         check_is_fitted(self, 'is_fitted_')
 
-        X = check_array(X, dtype=None, ensure_2d=False)
-
-        if X.ndim == 1:
-            user_ids = numpy.unique(X)
-        else:
-            user_ids = numpy.unique(X[:, 0])
-    
-        k = check_scalar(k,
-                         name='output recommendations count',
-                         target_type=int,
-                         min_val=1,
-                         max_val=len(self.popular_items))
+        user_ids = column_or_1d(check_array(X, dtype=None, ensure_2d=False))    
+        k = check_scalar(k, name='k', target_type=int, min_val=1)
 
         preds = []
         for user_id in user_ids:

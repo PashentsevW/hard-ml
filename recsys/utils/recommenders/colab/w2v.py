@@ -4,7 +4,8 @@ import numpy
 import pandas
 from gensim.models import Word2Vec
 from sklearn.base import BaseEstimator
-from sklearn.utils.validation import (check_array,
+from sklearn.utils.validation import (column_or_1d,
+                                      check_array,
                                       check_is_fitted,
                                       check_scalar,)
 from tqdm import tqdm
@@ -62,13 +63,7 @@ class Word2VecColabRecommender(BaseEstimator):
     def predict(self, X: numpy.ndarray, k: int, progress_bar: bool = True) -> numpy.ndarray:
         check_is_fitted(self, 'is_fitted_')
 
-        X = check_array(X, dtype=None, ensure_2d=False)
-
-        if X.ndim == 1:
-            user_ids = numpy.unique(X)
-        else:
-            user_ids = numpy.unique(X[:, 0])
-    
+        user_ids = column_or_1d(check_array(X, dtype=None, ensure_2d=False))    
         k = check_scalar(k, name='k', target_type=int, min_val=1)
 
         if progress_bar:
@@ -91,7 +86,9 @@ class Word2VecColabRecommender(BaseEstimator):
                 preds.append([])
                 continue
 
-            y_rec = [item_id for item_id, _ in y_rec if item_id not in self.user_history][:k]
+            y_rec = [item_id
+                     for item_id, _ in y_rec
+                     if item_id not in self.user_history[user_id]][:k]
 
             preds.append(y_rec)
 
