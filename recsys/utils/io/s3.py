@@ -1,9 +1,16 @@
 import io
+from enum import Enum
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import botocore
 import pandas
+import polars
+
+
+class DataFrameType(Enum):
+    PANDAS = 0
+    POLARS = 1
 
 
 def list_objects(client: 'botocore.client.S3', busket: str, folder: Optional[Path] = None) -> List[str]:
@@ -24,6 +31,18 @@ def upload_dataframe(dataframe: pandas.DataFrame,
 
 
 
-def download_dataframe(client: 'botocore.client.S3', busket: str, filepath: Path) -> pandas.DataFrame:
+def download_dataframe(
+        client: 'botocore.client.S3',
+        busket: str,
+        filepath: Path,
+        dataframe_type: DataFrameType = DataFrameType.PANDAS
+    ) -> Union[pandas.DataFrame, polars.DataFrame]:
     obj = client.get_object(Bucket=busket, Key=str(filepath))
-    return pandas.read_parquet(io.BytesIO(obj['Body'].read()))
+    buffer = io.BytesIO(obj['Body'].read())
+    
+    if dataframe_type == DataFrameType.PANDAS:
+        return pandas.read_parquet(buffer)
+    elif dataframe_type == DataFrameType.POLARS:
+        return polars.read_parquet(buffer)
+    else:
+        raise NotImplementedError(dataframe_type.name)
