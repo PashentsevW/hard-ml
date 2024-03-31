@@ -6,11 +6,16 @@ from sklearn.pipeline import Pipeline
 
 import columns
 import constants
-from utils.recommenders.graph import RandomItemsGraphRecommender
+from utils.recommenders.graph import (Node2VecGraphRecommender,
+                                      RandomItemsGraphRecommender)
 from utils.validation.metrics import recall_score
 
 pipelines = {
-    'random': Pipeline([('recommender', RandomItemsGraphRecommender(random_state=constants.RANDOM_STATE))])
+    'random': Pipeline([('recommender', RandomItemsGraphRecommender(random_state=constants.RANDOM_STATE))]),
+    'node2vec': Pipeline(
+        [('recommender', 
+          Node2VecGraphRecommender(random_state=constants.RANDOM_STATE))]
+    )
 }
 
 

@@ -1,1 +1,2 @@
+from .node2vec import Node2VecGraphRecommender
 from .random_items import RandomItemsGraphRecommender
