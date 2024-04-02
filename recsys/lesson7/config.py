@@ -2,6 +2,7 @@ import logging
 
 import numpy
 import pandas
+import torch
 from sklearn.pipeline import Pipeline
 
 import columns
@@ -14,7 +15,8 @@ pipelines = {
     'random': Pipeline([('recommender', RandomItemsGraphRecommender(random_state=constants.RANDOM_STATE))]),
     'node2vec': Pipeline(
         [('recommender', 
-          Node2VecGraphRecommender(random_state=constants.RANDOM_STATE))]
+          Node2VecGraphRecommender(device='cuda' if torch.cuda.is_available() else 'cpu',
+                                   random_state=constants.RANDOM_STATE))]
     )
 }
 

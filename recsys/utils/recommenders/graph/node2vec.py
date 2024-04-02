@@ -29,6 +29,7 @@ class Node2VecGraphRecommender(BaseEstimator):
                  lr: float = 0.05,
                  n_epochs: int = 5,
                  num_workers: int = 1,
+                 device: str = 'cpu',
                  random_state: int = None) -> None:
         super().__init__()
         self.embedding_dim = embedding_dim
@@ -44,14 +45,17 @@ class Node2VecGraphRecommender(BaseEstimator):
         self.lr = lr
         self.n_epochs = n_epochs
         self.num_workers = num_workers
+        self.device = device
         self.random_state = random_state 
 
-    def fit(self, X: numpy.ndarray, y = None, torch_device: str = 'cpu') -> 'Node2VecGraphRecommender':
+    def fit(self, X: numpy.ndarray, y = None) -> 'Node2VecGraphRecommender':
         X = check_array(X, dtype=None)
+
+        logging.info('Fit on %s', self.device.upper())
 
         data = Data(edge_index=torch.from_numpy(X).T.contiguous())
         data.validate()
-        data.to(torch_device)
+        data.to(self.device)
 
         model = Node2Vec(
             data.edge_index,
@@ -64,7 +68,7 @@ class Node2VecGraphRecommender(BaseEstimator):
             q=check_scalar(self.q, name='q', target_type=float, min_val=0),
             sparse=check_scalar(self.sparse, name='sparse', target_type=bool),
         )
-        model.to(torch_device)
+        model.to(self.device)
 
         torch.manual_seed(self.random_state)
 
@@ -85,7 +89,7 @@ class Node2VecGraphRecommender(BaseEstimator):
             for pos_rw, neg_rw in loader:
                 optimizer.zero_grad()
 
-                loss = model.loss(pos_rw.to(torch_device), neg_rw.to(torch_device))
+                loss = model.loss(pos_rw.to(self.device), neg_rw.to(self.device))
                 loss.backward()
                 
                 optimizer.step()
@@ -94,7 +98,7 @@ class Node2VecGraphRecommender(BaseEstimator):
             
             logging.info('Epoch #%d, loss: %f', epoch, total_loss / len(loader))
 
-        self.embeddings = model.embedding.weight.detach().numpy()
+        self.embeddings = model.embedding.weight.detach().cpu().numpy()
 
         logging.info('Got embeddings with shape %s', self.embeddings.shape)
 
