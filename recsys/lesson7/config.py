@@ -3,6 +3,8 @@ import logging
 import numpy
 import pandas
 import torch
+from optuna.distributions import CategoricalDistribution, IntDistribution, FloatDistribution
+from optuna.integration import OptunaSearchCV
 from sklearn.pipeline import Pipeline
 
 import columns
@@ -44,4 +46,26 @@ def score_wrapper(estimator: Pipeline, X: numpy.ndarray, y: numpy.ndarray = None
         raise ValueError(estimator)
 
 
-searchers = {}
+searchers = {
+    'node2vec': (
+        OptunaSearchCV,
+        {
+            'param_distributions': {
+                'recommender__embedding_dim': CategoricalDistribution(choices=[16, 32, 64, 128]),
+                'recommender__walk_length': IntDistribution(low=2, high=6),
+                'recommender__walks_per_node': IntDistribution(low=1, high=20),
+                # 'recommender__context_size': IntDistribution(low=1, high=20),
+                'recommender__num_negative_samples': IntDistribution(low=5, high=20),
+                'recommender__p': FloatDistribution(low=0.01, high=1),
+                'recommender__q': FloatDistribution(low=0.01, high=1),
+            },
+            'n_jobs': 6,
+            'n_trials': 50,
+            'scoring': score_wrapper,
+            'refit': False,
+            'verbose': 4,
+            'random_state': constants.RANDOM_STATE,
+            'error_score': 'raise'
+        }
+    ),
+}

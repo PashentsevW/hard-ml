@@ -26,7 +26,7 @@ class Node2VecGraphRecommender(BaseEstimator):
                  sparse: bool = True,
                  batch_size: int = 128,
                  shuffle: bool = True,
-                 lr: float = 0.05,
+                 lr: float = 0.01,
                  n_epochs: int = 5,
                  num_workers: int = 1,
                  device: str = 'cpu',
@@ -34,7 +34,7 @@ class Node2VecGraphRecommender(BaseEstimator):
         super().__init__()
         self.embedding_dim = embedding_dim
         self.walk_length = walk_length
-        self.context_size = context_size
+        self.context_size = context_size 
         self.walks_per_node = walks_per_node
         self.num_negative_samples = num_negative_samples
         self.p = p
@@ -46,7 +46,7 @@ class Node2VecGraphRecommender(BaseEstimator):
         self.n_epochs = n_epochs
         self.num_workers = num_workers
         self.device = device
-        self.random_state = random_state 
+        self.random_state = random_state
 
     def fit(self, X: numpy.ndarray, y = None) -> 'Node2VecGraphRecommender':
         X = check_array(X, dtype=None)
@@ -56,6 +56,11 @@ class Node2VecGraphRecommender(BaseEstimator):
         data = Data(edge_index=torch.from_numpy(X).T.contiguous())
         data.validate()
         data.to(self.device)
+
+        if self.walk_length < self.context_size:
+            logging.warning('walk_length < context_size, set context_size = walk_length')
+
+            self.context_size = self.walk_length
 
         model = Node2Vec(
             data.edge_index,
