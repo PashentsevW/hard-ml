@@ -46,4 +46,3 @@ class PopularItemsColabRecommender(BaseEstimator):
             preds.append(y_rec)
 
         return numpy.array(preds, dtype=numpy.object_)
-
