@@ -6,10 +6,12 @@ from sklearn.pipeline import Pipeline
 
 import columns
 import constants
-from utils.validation.metrics import ndcg_score
+from utils.validation.metrics import ndcg_score, recall_score
+
+import estimators
 
 splitter = {
-    'by_sessions': ...,
+    'by_sessions': estimators.LastNSampleSplitter(n_last=2),
 }
 
 cand_pipelines = {
@@ -22,22 +24,27 @@ cand_data_pipelines = {
 }
 
 rank_pipelines = {
-    'dummy': ...,
+    'popularity': ...,
     'catboost': ...,
 }
+rank_pipelines['baseline'] = rank_pipelines['popularity']
 
 rank_data_pipelines = {
-    'dummy': ...,
+    'popularity_by_users': ...,
 }
+rank_data_pipelines['baseline'] = rank_data_pipelines['popularity_by_users']
 
 
-def score_wrapper(estimator: Pipeline, X: numpy.ndarray, y: numpy.ndarray = None) -> float:
+def cand_score_wrapper(estimator: Pipeline,
+                       X: numpy.ndarray,
+                       y: numpy.ndarray = None,
+                       group: numpy.ndarray = None,) -> float:
     if isinstance(estimator, Pipeline):
         logging.info('Evaluate')
 
         user_items = (
-            pandas.DataFrame(X, columns=[columns.UID_COLUMN, columns.FRIEND_UID_COLUMN])
-            .groupby(columns.UID_COLUMN)[columns.FRIEND_UID_COLUMN]
+            pandas.DataFrame(X, columns=[columns.USER_ID_COLUMN, columns.ITEM_ID_COLUMN])
+            .groupby(columns.USER_ID_COLUMN)[columns.ITEM_ID_COLUMN]
             .agg(lambda items: items.to_list())
         )
 
@@ -45,11 +52,47 @@ def score_wrapper(estimator: Pipeline, X: numpy.ndarray, y: numpy.ndarray = None
 
         logging.info('Got y_true with shape %s', y_true.shape)
 
-        y_pred = estimator.predict(user_items.index.to_numpy(), k=constants.AT_K)
+        y_pred = estimator.predict(user_items.index.to_numpy(), k=constants.AT_K_CAND)
 
         logging.info('Got y_pred with shape %s', y_pred.shape)
 
-        return ndcg_score(y_true, y_pred, constants.AT_K)
+        return recall_score(y_true, y_pred, constants.AT_K_CAND)
+    else:
+        raise ValueError(estimator)
+
+
+def rank_score_wrapper(estimator: Pipeline,
+                       X: numpy.ndarray,
+                       y: numpy.ndarray,
+                       group: numpy.ndarray) -> float:
+    if isinstance(estimator, Pipeline):
+        logging.info('Evaluate')
+
+        relevances = estimator.predict(X)
+
+        logging.info('Got relevances with shape %s', relevances.shape)
+
+        eval_df = pandas.DataFrame({columns.GROUP_COLUMN: group,
+                                    columns.Y_TRUE_COLUMN: y,
+                                    columns.Y_PRED_COLUMN: relevances,})
+
+        # TODO change y from relevance to item_ids
+        
+        y_true = (eval_df
+                  .groupby(columns.GROUP_COLUMN)[columns.Y_TRUE_COLUMN]
+                  .agg(lambda scores: scores.to_list())
+                  .to_numpy(dtype=numpy.object_))
+
+        logging.info('Got y_true with shape %s', y_true.shape)
+        
+        y_pred = (eval_df
+                  .groupby(columns.GROUP_COLUMN)[columns.Y_PRED_COLUMN]
+                  .agg(lambda scores: scores.to_list())
+                  .to_numpy(dtype=numpy.object_))
+
+        logging.info('Got y_pred with shape %s', y_pred.shape)
+
+        return ndcg_score(y_true, y_pred, constants.AT_K_RANK)
     else:
         raise ValueError(estimator)
 
