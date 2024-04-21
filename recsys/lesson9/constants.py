@@ -6,6 +6,7 @@ S3_FOLDER = pathlib.Path('hardml/recsys/lesson9/')
 RANDOM_STATE = 94
 
 DATA_PATH = S3_FOLDER
+ARTIFACTS_PATH = S3_FOLDER / 'artifacts'
 SUBMISSION_PATH = S3_FOLDER / 'submissions'
 
 AT_K = 20

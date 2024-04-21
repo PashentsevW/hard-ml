@@ -1,52 +1,195 @@
 import argparse
 import logging
 from datetime import datetime
-from typing import Optional
+from typing import Callable, List, Optional, Tuple
 
 import boto3
 import numpy
 import pandas
-from sklearn.model_selection import cross_val_score
 from sklearn.pipeline import Pipeline
+
+from utils.io.s3 import download_dataframe, download_object, upload_dataframe, upload_object
 
 import columns
 import constants
-from config import pipelines, score_wrapper, searchers
-from utils.io.s3 import download_dataframe, upload_dataframe
+from config import (cand_data_pipelines,
+                    cand_pipelines,
+                    rank_data_pipelines,
+                    rank_pipelines,
+                    searchers,
+                    splitter)
+from estimators import SearcherBase, SplitterBase
+
+ScoreFunctionType = Callable[[Pipeline, numpy.ndarray, Optional[numpy.ndarray]], float]
 
 
-# def prepare_data_for_submit(pipeline: Pipeline,
-#                             dataset_df: pandas.DataFrame) -> pandas.DataFrame:
-    # users = dataset_df[columns.UID_COLUMN].unique()
-    # items = pipeline.predict(users, k=constants.AT_K)
+def _prepare_data_for_cand_pipeline(sample_df: pandas.DataFrame, data_pipeline: str) -> numpy.ndarray:
+    pass
 
-    # submission_df = pandas.DataFrame({
-    #     columns.USER_ID_COLUMN: users
-    # })
 
-    # if items.ndim == 1:
-    #     submission_df.loc[:, columns.Y_RECS_COLUMN] = (
-    #         pandas.Series(items, index=submission_df.index)
-    #         .apply(lambda row: numpy.array(row).flatten().tolist())
-    #     )
-    # else:
-    #     submission_df.loc[:, columns.Y_RECS_COLUMN] = (
-    #         pandas.DataFrame(items, index=submission_df.index)
-    #         .apply(lambda row: numpy.array(row).flatten().tolist(), axis=1)
-    #     )
+def _prepare_data_for_rank_pipeline(sample_df: pandas.DataFrame,
+                                    data_pipelines: List[str]) -> Tuple[numpy.ndarray, numpy.ndarray]:
+    pass
 
-    # return submission_df
+
+def _prepare_pipeline(candidate: bool,
+                      pipeline_id: str,
+                      score: ScoreFunctionType,
+                      cv: SplitterBase) -> Tuple[Pipeline, ScoreFunctionType, Optional[SearcherBase]]:
+    pipeline = cand_pipelines[pipeline_id] if candidate else rank_pipelines[pipeline_id]
+    searcher = None
+
+    if pipeline_id in searchers:
+        logging.info('Prepare searcher for "%s"', pipeline_id)
+
+        searcher = searchers[pipeline_id][0](pipeline,
+                                             cv=cv,
+                                             **searchers[pipeline_id][1])
+
+    return pipeline, score, searcher
+
+
+def _train_and_eval_pipeline(pipeline: Pipeline,
+                             score: ScoreFunctionType,
+                             X_train: numpy.ndarray,
+                             X_test: numpy.ndarray,
+                             y_train: Optional[numpy.ndarray] = None,
+                             y_test: Optional[numpy.ndarray] = None,
+                             searcher: Optional[SearcherBase] = None) -> Pipeline:
+    if searcher:
+        search_result = searcher.fit(X_train, y_train)
+
+        if hasattr(search_result, 'best_params_'):
+            pipeline.set_params(**search_result.best_params_)
+
+            logging.info('Search complete, find best params: %s', search_result.best_params_)
+        else:
+            raise ValueError('best_params_ not supported')
+
+    pipeline.fit(X_train, y_train)
+
+    logging.info('Got score on test sample', score(pipeline, X_test, y_test))
+
+    X_full = numpy.vstack([X_train, X_test])
+    y_full = numpy.hstack([y_train, y_test])
+
+    pipeline.fit(X_full, y_full)
+
+    return pipeline    
+
+
+def train(sample_df: pandas.DataFrame,
+          splitter: SplitterBase,
+          cand_pipeline_id: str,
+          cand_data_pipeline_id,
+          rank_pipeline_id: Optional[str] = None,
+          rank_data_pipeline_ids = None) -> Tuple[Pipeline, Pipeline]:
+    train_idx, test_idx = (
+        next(splitter
+             .split(sample_df.loc[:, [columns.USER_ID_COLUMN,
+                                      columns.ITEM_ID_COLUMN,
+                                      columns.DT_COLUMN,
+                                      columns.TARGET_COLUMN]]))
+    )
+
+    cand_X_train = _prepare_data_for_cand_pipeline(sample_df.loc[train_idx, :],
+                                                   cand_data_pipeline_id)
+
+    logging.info('Got train data for cand pipeline with shape: %s', cand_X_train.shape)
+
+    cand_X_test = _prepare_data_for_cand_pipeline(sample_df.loc[test_idx, :],
+                                                  cand_data_pipeline_id)
+
+    logging.info('Got test data for cand pipeline with shape: %s', cand_X_test.shape)
+
+    (cand_pipeline,
+     cand_scorer,
+     cand_searcher) = _prepare_pipeline(True, cand_pipeline_id, ..., splitter)
+
+    cand_pipeline = _train_and_eval_pipeline(cand_pipeline,
+                                             cand_scorer,
+                                             cand_X_train, cand_X_test,
+                                             None, None,
+                                             cand_searcher)
+
+    logging.info('Got fitted cand pipeline: %s', cand_pipeline)
+
+    if not rank_pipeline_id:
+        return cand_pipeline, ...
+    
+    rank_X_train, rank_y_train = (
+        _prepare_data_for_rank_pipeline(sample_df.loc[train_idx, :],
+                                        rank_data_pipeline_ids)
+    )
+
+    logging.info('Got train data for rank pipeline: features %s; target %s',
+                 rank_X_train.shape,
+                 rank_y_train.shape)
+
+    rank_X_test, rank_y_test = (
+        _prepare_data_for_rank_pipeline(sample_df.loc[test_idx, :],
+                                        rank_data_pipeline_ids)
+    )
+
+    logging.info('Got test data for rank pipeline: features %s; target %s',
+                 rank_X_test.shape,
+                 rank_y_test.shape)
+    
+    (rank_pipeline,
+     rank_scorer,
+     rank_searcher) = _prepare_pipeline(False, rank_pipeline_id, ..., splitter)
+
+    rank_pipeline = _train_and_eval_pipeline(rank_pipeline,
+                                             rank_scorer,
+                                             rank_X_train, rank_X_test,
+                                             rank_y_train, rank_y_test,
+                                             rank_searcher)
+
+    logging.info('Got fitted rank pipeline: %s', cand_pipeline)
+
+    return cand_pipeline, rank_pipeline
+
+
+def inference(sample_df: pandas.DataFrame,
+              cand_pipeline: Pipeline,
+              rank_pipeline: Pipeline,
+              rank_data_pipeline_ids) -> pandas.DataFrame:
+    pass
 
 
 if __name__ == '__main__':
     run_dt = datetime.now()
     
-    argparser = argparse.ArgumentParser('lesson2')
-    argparser.add_argument('-p', '--pipeline',
+    argparser = argparse.ArgumentParser('lesson9')
+    argparser.add_argument('-m', '--mode',
                            type=str,
-                           choices=pipelines.keys(),
+                           choices=['train', 'inference'],
                            required=True,
-                           dest='pipeline')
+                           dest='mode')
+    argparser.add_argument('-s', '--splitter',
+                           type=str,
+                           choices=splitter.keys(),
+                           required=True,
+                           dest='splitter')
+    argparser.add_argument('--pipeline-cand',
+                           type=str,
+                           required=True,
+                           dest='pipeline_cand')
+    argparser.add_argument('--pipeline-data-cand',
+                           type=str,
+                           choices=cand_data_pipelines.keys(),
+                           required=True,
+                           dest='pipeline_data_cand')
+    argparser.add_argument('--pipeline-rank',
+                           type=str,
+                           required=False,
+                           dest='pipeline_rank')
+    argparser.add_argument('--pipeline-data-rank',
+                           type=str,
+                           choices=rank_data_pipelines.keys(),
+                           nargs='+',
+                           required=False,
+                           dest='pipelines_data_rank')
     argparser.add_argument('-v', '--verbose',
                            default='INFO',
                            type=lambda arg: logging.getLevelName(arg),
@@ -58,31 +201,56 @@ if __name__ == '__main__':
     logging.basicConfig(level=args.loglevel)
     logging.debug(args.__dict__)
 
-    logging.info('Use "%s" pipeline', args.pipeline)
-
     s3_session = boto3.session.Session()
     s3_client = s3_session.client(service_name='s3', endpoint_url='https://storage.yandexcloud.net')
 
-    logging.info('Download data')
+    if args.mode == 'train':
+        sample_df = download_dataframe(s3_client, constants.S3_BUCKET, constants.DATA_PATH / 'train.parquet')
 
-    dataset_df = ...
+        logging.info('Got train sample with shape: %s', sample_df.shape)
 
-    logging.info('Downloaded data, with shape %s', dataset_df.shape)
+        cand_pipeline, rank_pipeline = train(sample_df,
+                                             args.splitter,
+                                             args.pipeline_cand,
+                                             args.pipeline_data_cand,
+                                             args.pipeline_rank,
+                                             args.pipelines_data_rank)
+        
+        file_path = constants.ARTIFACTS_PATH / 'cand' / f'{run_dt.strftime("%Y%m%dT%H%M%S")}.bin'
+        upload_object(cand_pipeline, s3_client, constants.S3_BUCKET, file_path)
 
-    logging.info('Fit pipeline "%s"', args.pipeline)
+        logging.info('Candidate pipeline saved to %s', file_path)
 
-    pipeline = ...
+        file_path = constants.ARTIFACTS_PATH / 'rank' / f'{run_dt.strftime("%Y%m%dT%H%M%S")}.bin'
+        upload_object(rank_pipeline, s3_client, constants.S3_BUCKET, file_path)
 
-    logging.info('Got fitted pipeline:\n%s', pipeline)
-    
-    file_path = constants.SUBMISSION_PATH / args.pipeline / f'{run_dt.strftime("%Y%m%dT%H%M%S")}.parquet'
+        logging.info('Ranking pipeline saved to %s', file_path)
+    elif args.mode == 'inference':
+        sample_df = download_dataframe(s3_client, constants.S3_BUCKET, constants.DATA_PATH / 'test.parquet')
 
-    submission_df = ...
+        logging.info('Got sample with shape: %s', sample_df.shape)
 
-    logging.info('Got submission with shape %s and columns %s', 
-                submission_df.shape,
-                submission_df.columns)
+        file_path = constants.ARTIFACTS_PATH / 'cand' / f'{args.pipeline_cand}.bin'
+        cand_pipeline: Pipeline = download_object(s3_client, constants.S3_BUCKET, file_path)
 
-    logging.info('Recommendations saved to %s', file_path)
+        logging.info('Got candidate pipeline: %s', cand_pipeline)
+
+        file_path = constants.ARTIFACTS_PATH / 'rank' / f'{args.pipeline_cand}.bin'
+        rank_pipeline: Pipeline = download_object(s3_client, constants.S3_BUCKET, file_path)
+
+        logging.info('Got ranking pipeline: %s', rank_pipeline)
+
+        submission_df = inference(sample_df, cand_pipeline, rank_pipeline, args.pipelines_data_rank)
+
+        logging.info('Got submission with shape %s and columns %s', 
+                     submission_df.shape,
+                     submission_df.columns)
+
+        file_path = constants.SUBMISSION_PATH / f'{run_dt.strftime("%Y%m%dT%H%M%S")}.parquet'
+        upload_dataframe(submission_df, s3_client, constants.S3_BUCKET, file_path)
+
+        logging.info('Recommendations saved to %s', file_path)
+    else:
+        raise ValueError('Unsupported mode: %s', args.mode)
 
     logging.info('Done!')

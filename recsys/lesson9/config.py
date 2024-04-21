@@ -8,7 +8,27 @@ import columns
 import constants
 from utils.validation.metrics import ndcg_score
 
-pipelines = {}
+splitter = {
+    'by_sessions': ...,
+}
+
+cand_pipelines = {
+    'als': ...,
+    'w2v': ...,
+}
+
+cand_data_pipelines = {
+    'user_item': ...,
+}
+
+rank_pipelines = {
+    'dummy': ...,
+    'catboost': ...,
+}
+
+rank_data_pipelines = {
+    'dummy': ...,
+}
 
 
 def score_wrapper(estimator: Pipeline, X: numpy.ndarray, y: numpy.ndarray = None) -> float:
