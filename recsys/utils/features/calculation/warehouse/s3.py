@@ -14,7 +14,7 @@ def _pass_through(dataframe: OutputDataType) -> OutputDataType:
     return dataframe
 
 
-class S3DataWareHouse(DataWarehouseBase):
+class S3DataWarehouse(DataWarehouseBase):
     def __init__(self, s3_client) -> None:
         super().__init__()
         self.client = s3_client

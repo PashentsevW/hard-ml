@@ -3,11 +3,11 @@ import logging
 from datetime import datetime
 from typing import Callable, List, Optional, Tuple
 
-import boto3
 import numpy
 import pandas
 from sklearn.pipeline import Pipeline
 
+from utils.features.calculation.builder import PandasFeaturesBuilder
 from utils.io.s3 import download_dataframe, download_object, upload_dataframe, upload_object
 
 import columns
@@ -15,9 +15,11 @@ import constants
 from config import (cand_data_pipelines,
                     cand_score_wrapper,
                     cand_pipelines,
+                    dwh,
                     rank_data_pipelines,
                     rank_score_wrapper,
                     rank_pipelines,
+                    s3_client,
                     searchers,
                     splitter)
 from estimators import SearcherBase, SplitterBase
@@ -26,7 +28,12 @@ ScoreFunctionType = Callable[[Pipeline, numpy.ndarray, Optional[numpy.ndarray], 
 
 
 def _prepare_data_for_cand_pipeline(sample_df: pandas.DataFrame, data_pipeline: str) -> numpy.ndarray:
-    pass
+    builder = PandasFeaturesBuilder([cand_data_pipelines[data_pipeline]])
+
+    user_item_df = (builder
+                    .calculate_on(sample_df.loc[:, [columns.USER_ID_COLUMN, columns.ITEM_ID_COLUMN, columns.DT_COLUMN]]))
+
+    return user_item_df.to_numpy()
 
 
 def _prepare_data_for_rank_pipeline(
@@ -268,8 +275,7 @@ if __name__ == '__main__':
     logging.basicConfig(level=args.loglevel)
     logging.debug(args.__dict__)
 
-    s3_session = boto3.session.Session()
-    s3_client = s3_session.client(service_name='s3', endpoint_url='https://storage.yandexcloud.net')
+    dwh.register('train', constants.S3_BUCKET, constants.DATA_PATH / 'train.parquet')
 
     if args.mode == 'train':
         sample_df = download_dataframe(s3_client, constants.S3_BUCKET, constants.DATA_PATH / 'train.parquet')

@@ -1,14 +1,22 @@
 import logging
 
+import boto3
 import numpy
 import pandas
 from sklearn.pipeline import Pipeline
 
-import columns
-import constants
+from utils.features.calculation.warehouse import S3DataWarehouse
 from utils.validation.metrics import ndcg_score, recall_score
 
+import calcers
+import columns
+import constants
 import estimators
+
+s3_session = boto3.session.Session()
+s3_client = s3_session.client(service_name='s3', endpoint_url='https://storage.yandexcloud.net')
+
+dwh = S3DataWarehouse(s3_client)
 
 splitter = {
     'by_sessions': estimators.LastNSampleSplitter(n_last=2),
@@ -20,7 +28,7 @@ cand_pipelines = {
 }
 
 cand_data_pipelines = {
-    'user_item': ...,
+    'user_item': calcers.UserItemMatrixCalcer('user_item_matrix', dwh),
 }
 
 rank_pipelines = {

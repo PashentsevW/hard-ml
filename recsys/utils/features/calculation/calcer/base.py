@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Generic
 
 from ..types import TSample
-from ..wareshouse import DataWarehouseBase
+from ..warehouse import DataWarehouseBase
 
 
 class FeatureCalcerBase(ABC, Generic[TSample]):
